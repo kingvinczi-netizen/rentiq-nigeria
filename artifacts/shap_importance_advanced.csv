@@ -1,0 +1,14 @@
+feature,mean_abs_shap,label
+tier_median_rent,0.0057033827,Tier median rent
+dist_to_ikeja_km,0.0071994285,Distance to Ikeja (km)
+electricity_hours,0.009594963,Electricity (hrs/day)
+tier_target_enc,0.010877774,Tier (target encoded)
+tier_encoded,0.014325186,Tier (ordinal)
+latitude,0.016450632,Latitude
+longitude,0.019495772,Longitude
+type_house,0.024584167,Property type
+dist_to_vi_km,0.03247349,Distance to VI (km)
+bathrooms,0.074537285,Bathrooms
+area_median_rent,0.15322216,Area median rent
+bedrooms_encoded,0.25158173,Bedroom count
+neighbourhood_median_rent,0.67028403,Neighbourhood median rent
