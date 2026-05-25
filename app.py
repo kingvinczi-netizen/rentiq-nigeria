@@ -4,7 +4,6 @@ import numpy as np
 import pickle
 import os
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
 
 st.set_page_config(
     page_title="RentIQ Nigeria",
@@ -13,156 +12,173 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700&family=Space+Mono:wght@400;700&display=swap');
 
-html, body, [class*="css"] {
-    font-family: 'Sora', sans-serif;
+# Tier-to-image mapping (Unsplash free-use, no attribution required)
+TIER_BACKGROUNDS = {
+    'island':           'https://images.unsplash.com/photo-1668010023661-89c9bea88ade?w=1920&q=80',
+    'gra':              'https://images.unsplash.com/photo-1580500550469-4f0baa4a2da3?w=1920&q=80',
+    'upscale-mainland': 'https://images.unsplash.com/photo-1580500550469-4f0baa4a2da3?w=1920&q=80',
+    'mainland':         'https://images.unsplash.com/photo-1606298855672-3efb63017be8?w=1920&q=80',
+    'suburb':           'https://images.unsplash.com/photo-1606298855672-3efb63017be8?w=1920&q=80',
+    'outskirt':         'https://images.unsplash.com/photo-1568395216634-3acdca9eaf30?w=1920&q=80',
+    'unknown':          'https://images.unsplash.com/photo-1606298855672-3efb63017be8?w=1920&q=80',
 }
 
-.stApp {
-    background-color: #0d0d0d;
-    color: #f0ede6;
-}
 
-section[data-testid="stSidebar"] {
-    background-color: #141414;
-    border-right: 1px solid #2a2a2a;
-}
+def render_background(tier_key):
+    img_url = TIER_BACKGROUNDS.get(tier_key, TIER_BACKGROUNDS['mainland'])
+    st.markdown(f"""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700&family=Space+Mono:wght@400;700&display=swap');
 
-section[data-testid="stSidebar"] * {
-    color: #f0ede6 !important;
-}
+    html, body, [class*="css"] {{
+        font-family: 'Sora', sans-serif;
+    }}
 
-.rent-display {
-    font-family: 'Space Mono', monospace;
-    font-size: 3.2rem;
-    font-weight: 700;
-    color: #c8f564;
-    letter-spacing: -1px;
-    line-height: 1.1;
-}
+    .stApp {{
+        background-image:
+            linear-gradient(rgba(10, 10, 10, 0.92), rgba(10, 10, 10, 0.96)),
+            url('{img_url}');
+        background-size: cover;
+        background-position: center;
+        background-attachment: fixed;
+        color: #f0ede6;
+    }}
 
-.rent-range {
-    font-family: 'Space Mono', monospace;
-    font-size: 1.05rem;
-    color: #888;
-    margin-top: 6px;
-}
+    section[data-testid="stSidebar"] {{
+        background-color: rgba(15, 15, 15, 0.95);
+        backdrop-filter: blur(10px);
+        border-right: 1px solid #2a2a2a;
+    }}
 
-.tier-badge {
-    display: inline-block;
-    padding: 4px 14px;
-    border-radius: 4px;
-    font-family: 'Space Mono', monospace;
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    margin-top: 10px;
-}
+    section[data-testid="stSidebar"] * {{
+        color: #f0ede6 !important;
+    }}
 
-.tier-budget    { background: #1a2e1a; color: #6fcf6f; border: 1px solid #3a5e3a; }
-.tier-midrange  { background: #2e2a14; color: #f0c040; border: 1px solid #5e521a; }
-.tier-premium   { background: #2a1e14; color: #f09060; border: 1px solid #5e3a20; }
-.tier-luxury    { background: #1e1430; color: #b090f0; border: 1px solid #3a2060; }
+    .rent-display {{
+        font-family: 'Space Mono', monospace;
+        font-size: 3.2rem;
+        font-weight: 700;
+        color: #c8f564;
+        letter-spacing: -1px;
+        line-height: 1.1;
+    }}
 
-.location-pill {
-    display: inline-block;
-    padding: 3px 12px;
-    border-radius: 20px;
-    font-size: 0.72rem;
-    font-family: 'Space Mono', monospace;
-    letter-spacing: 0.5px;
-    background: #1e1e1e;
-    border: 1px solid #333;
-    color: #aaa;
-    margin-left: 10px;
-    vertical-align: middle;
-}
+    .rent-range {{
+        font-family: 'Space Mono', monospace;
+        font-size: 1.05rem;
+        color: #888;
+        margin-top: 6px;
+    }}
 
-.verdict-fair    { color: #6fcf6f; font-weight: 700; font-size: 1.3rem; }
-.verdict-above   { color: #f09060; font-weight: 700; font-size: 1.3rem; }
-.verdict-below   { color: #b090f0; font-weight: 700; font-size: 1.3rem; }
+    .tier-badge {{
+        display: inline-block;
+        padding: 4px 14px;
+        border-radius: 4px;
+        font-family: 'Space Mono', monospace;
+        font-size: 0.75rem;
+        font-weight: 700;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        margin-top: 10px;
+    }}
 
-.metric-card {
-    background: #1a1a1a;
-    border: 1px solid #2a2a2a;
-    border-radius: 8px;
-    padding: 18px 22px;
-    margin-bottom: 12px;
-}
+    .tier-budget    {{ background: #1a2e1a; color: #6fcf6f; border: 1px solid #3a5e3a; }}
+    .tier-midrange  {{ background: #2e2a14; color: #f0c040; border: 1px solid #5e521a; }}
+    .tier-premium   {{ background: #2a1e14; color: #f09060; border: 1px solid #5e3a20; }}
+    .tier-luxury    {{ background: #1e1430; color: #b090f0; border: 1px solid #3a2060; }}
 
-.section-label {
-    font-size: 0.68rem;
-    font-family: 'Space Mono', monospace;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: #555;
-    margin-bottom: 14px;
-}
+    .location-pill {{
+        display: inline-block;
+        padding: 3px 12px;
+        border-radius: 20px;
+        font-size: 0.72rem;
+        font-family: 'Space Mono', monospace;
+        letter-spacing: 0.5px;
+        background: rgba(30, 30, 30, 0.8);
+        border: 1px solid #333;
+        color: #aaa;
+        margin-left: 10px;
+        vertical-align: middle;
+    }}
 
-.comp-table th {
-    background: #1a1a1a;
-    color: #888;
-    font-size: 0.72rem;
-    font-family: 'Space Mono', monospace;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    padding: 8px 12px;
-    border-bottom: 1px solid #2a2a2a;
-}
+    .verdict-fair    {{ color: #6fcf6f; font-weight: 700; font-size: 1.3rem; }}
+    .verdict-above   {{ color: #f09060; font-weight: 700; font-size: 1.3rem; }}
+    .verdict-below   {{ color: #b090f0; font-weight: 700; font-size: 1.3rem; }}
 
-.comp-table td {
-    padding: 8px 12px;
-    font-size: 0.85rem;
-    border-bottom: 1px solid #1e1e1e;
-    color: #ccc;
-}
+    .metric-card {{
+        background: rgba(20, 20, 20, 0.85);
+        backdrop-filter: blur(8px);
+        border: 1px solid rgba(60, 60, 60, 0.5);
+        border-radius: 10px;
+        padding: 20px 24px;
+        margin-bottom: 12px;
+    }}
 
-.comp-table tr:last-child td { border-bottom: none; }
+    .section-label {{
+        font-size: 0.68rem;
+        font-family: 'Space Mono', monospace;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        color: #666;
+        margin-bottom: 14px;
+    }}
 
-div[data-testid="stTabs"] button {
-    font-family: 'Space Mono', monospace;
-    font-size: 0.75rem;
-    letter-spacing: 1px;
-}
+    div[data-testid="stTabs"] button {{
+        font-family: 'Space Mono', monospace;
+        font-size: 0.75rem;
+        letter-spacing: 1px;
+    }}
 
-.stSlider > div > div > div { background: #c8f564 !important; }
+    .stSlider > div > div > div {{ background: #c8f564 !important; }}
 
-hr { border-color: #2a2a2a; }
+    hr {{ border-color: #2a2a2a; }}
 
-.stButton > button {
-    background: #c8f564;
-    color: #0d0d0d;
-    font-family: 'Space Mono', monospace;
-    font-weight: 700;
-    font-size: 0.8rem;
-    letter-spacing: 1px;
-    border: none;
-    border-radius: 4px;
-    padding: 10px 24px;
-}
+    .stButton > button {{
+        background: #c8f564;
+        color: #0d0d0d;
+        font-family: 'Space Mono', monospace;
+        font-weight: 700;
+        font-size: 0.8rem;
+        letter-spacing: 1px;
+        border: none;
+        border-radius: 4px;
+        padding: 10px 24px;
+    }}
 
-.stButton > button:hover {
-    background: #d4f97a;
-    color: #0d0d0d;
-}
+    .stButton > button:hover {{
+        background: #d4f97a;
+        color: #0d0d0d;
+    }}
 
-.warning-box {
-    background: #1e1a10;
-    border: 1px solid #4a3a10;
-    border-radius: 6px;
-    padding: 12px 16px;
-    font-size: 0.82rem;
-    color: #c8a840;
-    margin-top: 12px;
-}
+    .warning-box {{
+        background: rgba(30, 26, 16, 0.85);
+        border: 1px solid #4a3a10;
+        border-radius: 6px;
+        padding: 12px 16px;
+        font-size: 0.82rem;
+        color: #c8a840;
+        margin-top: 12px;
+    }}
 
-h1, h2, h3 { color: #f0ede6; }
-</style>
-""", unsafe_allow_html=True)
+    h1, h2, h3 {{ color: #f0ede6; }}
+
+    .driver-explain {{
+        background: rgba(20, 20, 20, 0.7);
+        border-left: 3px solid #c8f564;
+        padding: 14px 18px;
+        margin-top: 12px;
+        border-radius: 4px;
+        font-size: 0.88rem;
+        color: #bbb;
+        line-height: 1.55;
+    }}
+
+    .driver-explain strong {{ color: #c8f564; }}
+
+    .stNumberInput label {{ font-size: 0.85rem; color: #aaa !important; }}
+    </style>
+    """, unsafe_allow_html=True)
 
 
 FEATURES_V2 = [
@@ -194,30 +210,28 @@ TIER_CSS = {
     'Luxury':    'tier-luxury',
 }
 
-SHAP_LABELS = {
-    'neighbourhood_median_rent': 'Area price level',
-    'bedrooms_encoded':          'Bedroom count',
-    'area_median_rent':          'Area median rent',
-    'bathrooms':                 'Bathroom count',
-    'dist_to_vi_km':             'Distance to VI',
-    'type_house':                'Property type',
-    'longitude':                 'Location (East-West)',
-    'latitude':                  'Location (North-South)',
-    'tier_encoded':              'Location tier',
-    'tier_target_enc':           'Tier rent level',
+PLAIN_LABELS = {
+    'neighbourhood_median_rent': 'What the area normally costs',
+    'area_median_rent':          'Average rent in the area',
+    'bedrooms_encoded':          'Number of bedrooms',
+    'bathrooms':                 'Number of bathrooms',
+    'tier_median_rent':          'Where this area ranks',
+    'tier_encoded':              'Where this area ranks',
+    'tier_target_enc':           'Where this area ranks',
     'electricity_hours':         'Electricity supply',
+    'dist_to_vi_km':             'Distance to Victoria Island',
     'dist_to_ikeja_km':          'Distance to Ikeja',
-    'tier_median_rent':          'Tier median rent',
+    'type_house':                'Type of property',
+    'longitude':                 'Location on the map',
+    'latitude':                  'Location on the map',
 }
 
 
 def get_artifacts_path():
-    """Try Drive path first, fall back to local ./artifacts/"""
     drive_path = '/content/drive/MyDrive/RentIQ Nigeria/model/artifacts'
     if os.path.exists(drive_path):
         return drive_path
-    local_path = os.path.join(os.path.dirname(__file__), 'artifacts')
-    return local_path
+    return os.path.join(os.path.dirname(__file__), 'artifacts')
 
 
 @st.cache_resource(show_spinner=False)
@@ -241,11 +255,15 @@ def load_lookup():
 @st.cache_data(show_spinner=False)
 def load_master():
     drive_path = '/content/drive/MyDrive/RentIQ Nigeria/data/processed/rentiq_master.csv'
-    local_path = os.path.join(os.path.dirname(__file__), 'data', 'rentiq_master.csv')
+    local_paths = [
+        os.path.join(os.path.dirname(__file__), 'data', 'rentiq_master.csv'),
+        os.path.join(os.path.dirname(__file__), 'rentiq_master.csv'),
+    ]
     if os.path.exists(drive_path):
         return pd.read_csv(drive_path)
-    elif os.path.exists(local_path):
-        return pd.read_csv(local_path)
+    for lp in local_paths:
+        if os.path.exists(lp):
+            return pd.read_csv(lp)
     return None
 
 
@@ -298,27 +316,64 @@ def electricity_label(hours):
         return "Band E (~4hrs)"
 
 
-# --- Load everything ---
+# Initialise session state
+defaults = {
+    'prediction_done': False,
+    'predicted': None,
+    'p10': None,
+    'p90': None,
+    'price_tier_name': None,
+    'location_tier_display': None,
+    'area_display': None,
+    'area_key': None,
+    'bedrooms_encoded': None,
+    'elec_hours': None,
+    'current_tier_key': 'mainland',
+}
+for k, v in defaults.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
+
+
+# Load everything
 try:
     ensemble, p10_model, p90_model = load_models()
     lookup = load_lookup()
     master = load_master()
     shap_df = load_shap()
     models_loaded = True
+    load_error = None
 except Exception as e:
     models_loaded = False
     load_error = str(e)
+    lookup = pd.DataFrame()
 
 
-# --- Sidebar ---
+# Apply tier background
+render_background(st.session_state.current_tier_key)
+
+
+# Sidebar
 with st.sidebar:
     st.markdown("## RentIQ Nigeria")
-    st.markdown("<p style='color:#555; font-size:0.8rem; font-family:Space Mono; margin-top:-10px;'>Rental price intelligence</p>", unsafe_allow_html=True)
+    st.markdown("<p style='color:#666; font-size:0.78rem; font-family:Space Mono; margin-top:-10px;'>Rental price intelligence</p>", unsafe_allow_html=True)
     st.markdown("---")
 
-    area_options = sorted(lookup['area_scraped'].str.replace('-', ' ').str.title().tolist())
-    area_display = st.selectbox("Area", area_options)
-    area_key = area_display.lower().replace(' ', '-')
+    if not lookup.empty:
+        area_options = sorted(lookup['area_scraped'].str.replace('-', ' ').str.title().tolist())
+        area_display = st.selectbox("Area", area_options)
+        area_key = area_display.lower().replace(' ', '-')
+
+        # Update tier key for background as soon as area changes
+        matched = lookup[lookup['area_scraped'] == area_key]
+        if not matched.empty:
+            new_tier = str(matched.iloc[0]['location_tier']).lower().strip()
+            if new_tier != st.session_state.current_tier_key:
+                st.session_state.current_tier_key = new_tier
+                st.rerun()
+    else:
+        area_display = ""
+        area_key = ""
 
     prop_type = st.radio("Property type", ["Flat / Apartment", "House / Duplex"], horizontal=True)
     type_house = 1 if "House" in prop_type else 0
@@ -335,54 +390,71 @@ with st.sidebar:
     predict_clicked = st.button("Predict rent", use_container_width=True)
 
 
-# --- Main panel ---
+# Main panel header
 st.markdown("<h1 style='font-family:Space Mono; font-size:1.6rem; color:#c8f564; margin-bottom:2px;'>RentIQ Nigeria</h1>", unsafe_allow_html=True)
-st.markdown("<p style='color:#555; font-size:0.82rem; margin-top:0; margin-bottom:24px;'>Annual rental price intelligence for Lagos residential property</p>", unsafe_allow_html=True)
+st.markdown("<p style='color:#777; font-size:0.82rem; margin-top:0; margin-bottom:24px;'>Annual rental price estimates for Lagos residential property</p>", unsafe_allow_html=True)
 
 if not models_loaded:
     st.error(f"Could not load model files. Check that all pkl files are in the artifacts folder.\n\n{load_error}")
     st.stop()
 
-if not predict_clicked:
+
+# Run prediction when button is clicked, save results to session_state
+if predict_clicked:
+    row = lookup[lookup['area_scraped'] == area_key]
+
+    if row.empty:
+        st.error(f"Area '{area_display}' not found in lookup table.")
+        st.stop()
+
+    row = row.iloc[0]
+
+    features_dict = {
+        'bedrooms_encoded':          bedrooms_encoded,
+        'bathrooms':                 int(bathrooms),
+        'type_house':                type_house,
+        'tier_encoded':              float(row['tier_encoded']),
+        'neighbourhood_median_rent': float(row['neighbourhood_median_rent']),
+        'area_median_rent':          float(row['area_median_rent']),
+        'tier_median_rent':          float(row['tier_median_rent']),
+        'electricity_hours':         float(elec_hours),
+        'latitude':                  float(row['latitude']),
+        'longitude':                 float(row['longitude']),
+        'dist_to_vi_km':             float(row['dist_to_vi_km']),
+        'dist_to_ikeja_km':          float(row['dist_to_ikeja_km']),
+        'tier_target_enc':           float(row['tier_target_enc']),
+    }
+
+    predicted, p10, p90 = predict_rent(ensemble, p10_model, p90_model, features_dict)
+
+    st.session_state.prediction_done = True
+    st.session_state.predicted = predicted
+    st.session_state.p10 = p10
+    st.session_state.p90 = p90
+    st.session_state.price_tier_name = classify_price_tier(predicted)
+    st.session_state.location_tier_display = str(row['location_tier']).replace('-', ' ').title()
+    st.session_state.area_display = area_display
+    st.session_state.area_key = area_key
+    st.session_state.bedrooms_encoded = bedrooms_encoded
+    st.session_state.elec_hours = elec_hours
+
+
+# Placeholder if nothing predicted yet
+if not st.session_state.prediction_done:
     st.markdown("""
-    <div style='margin-top:60px; text-align:center; color:#333;'>
+    <div style='margin-top:80px; text-align:center; color:#444;'>
         <p style='font-family:Space Mono; font-size:0.9rem;'>Select your property details in the sidebar and click <strong style='color:#c8f564;'>Predict rent</strong></p>
     </div>
     """, unsafe_allow_html=True)
     st.stop()
 
 
-# --- Inference ---
-row = lookup[lookup['area_scraped'] == area_key]
+# Result block
+predicted = st.session_state.predicted
+p10 = st.session_state.p10
+p90 = st.session_state.p90
+price_tier = st.session_state.price_tier_name
 
-if row.empty:
-    st.error(f"Area '{area_display}' not found in lookup table. Check the area_scraped values match exactly.")
-    st.stop()
-
-row = row.iloc[0]
-
-features_dict = {
-    'bedrooms_encoded':          bedrooms_encoded,
-    'bathrooms':                 int(bathrooms),
-    'type_house':                type_house,
-    'tier_encoded':              float(row['tier_encoded']),
-    'neighbourhood_median_rent': float(row['neighbourhood_median_rent']),
-    'area_median_rent':          float(row['area_median_rent']),
-    'tier_median_rent':          float(row['tier_median_rent']),
-    'electricity_hours':         float(elec_hours),
-    'latitude':                  float(row['latitude']),
-    'longitude':                 float(row['longitude']),
-    'dist_to_vi_km':             float(row['dist_to_vi_km']),
-    'dist_to_ikeja_km':          float(row['dist_to_ikeja_km']),
-    'tier_target_enc':           float(row['tier_target_enc']),
-}
-
-predicted, p10, p90 = predict_rent(ensemble, p10_model, p90_model, features_dict)
-price_tier = classify_price_tier(predicted)
-location_tier_display = str(row['location_tier']).replace('-', ' ').title()
-
-
-# --- Result block ---
 col_result, col_gap, col_fair = st.columns([5, 1, 4])
 
 with col_result:
@@ -394,32 +466,33 @@ with col_result:
     st.markdown(f"""
     <div class='metric-card'>
         <div class='rent-display'>{format_naira(predicted)}</div>
-        <div class='rent-range'>Range: {format_naira(p10_safe)} — {format_naira(p90_safe)} &nbsp; <span style='font-size:0.7rem; color:#444;'>(80% confidence)</span></div>
+        <div class='rent-range'>Range: {format_naira(p10_safe)} to {format_naira(p90_safe)} &nbsp; <span style='font-size:0.7rem; color:#444;'>(80% confidence)</span></div>
         <div>
             <span class='tier-badge {TIER_CSS[price_tier]}'>{price_tier}</span>
-            <span class='location-pill'>{location_tier_display}</span>
+            <span class='location-pill'>{st.session_state.location_tier_display}</span>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown(f"""
+    st.markdown("""
     <div class='warning-box'>
-        NPC listings skew toward asking prices. Actual transacted rents in Lagos are typically
-        10-20% lower after negotiation. Adjust accordingly.
+        Listings on the major Nigerian property sites usually show asking prices.
+        Real Lagos rents come in 10 to 20 percent lower after negotiation, so adjust the number above accordingly.
     </div>
     """, unsafe_allow_html=True)
 
 with col_fair:
     st.markdown("<div class='section-label'>Is this rent fair?</div>", unsafe_allow_html=True)
+
     st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
 
     quoted = st.number_input(
-        "Quoted annual rent (₦)",
+        "Enter the rent you are being quoted (₦)",
         min_value=0,
         value=0,
         step=100_000,
         format="%d",
-        help="Enter the rent you are being asked to pay"
+        key="quoted_input"
     )
 
     if quoted > 0:
@@ -427,28 +500,26 @@ with col_fair:
         if abs(delta_pct) <= 10:
             verdict_class = "verdict-fair"
             verdict_text = "Fair"
-            verdict_detail = f"{abs(delta_pct):.1f}% within market estimate"
+            verdict_detail = f"Within {abs(delta_pct):.1f}% of our estimate"
         elif delta_pct > 10:
             verdict_class = "verdict-above"
             verdict_text = "Above market"
-            verdict_detail = f"{delta_pct:.1f}% above model estimate"
+            verdict_detail = f"{delta_pct:.1f}% above our estimate. Negotiate."
         else:
             verdict_class = "verdict-below"
             verdict_text = "Below market"
-            verdict_detail = f"{abs(delta_pct):.1f}% below model estimate — good deal"
+            verdict_detail = f"{abs(delta_pct):.1f}% below our estimate. Good deal."
 
         st.markdown(f"""
-        <div style='margin-top:8px;'>
+        <div style='margin-top:10px;'>
             <span class='{verdict_class}'>{verdict_text}</span><br>
-            <span style='color:#666; font-size:0.82rem;'>{verdict_detail}</span><br>
-            <span style='color:#444; font-size:0.78rem; margin-top:6px; display:block;'>
-                Model estimate: {format_naira(predicted)}<br>
-                Quoted: {format_naira(quoted)}
+            <span style='color:#888; font-size:0.85rem;'>{verdict_detail}</span><br>
+            <span style='color:#555; font-size:0.78rem; margin-top:8px; display:block; line-height:1.6;'>
+                Our estimate: {format_naira(predicted)}<br>
+                You were quoted: {format_naira(quoted)}
             </span>
         </div>
         """, unsafe_allow_html=True)
-    else:
-        st.markdown("<p style='color:#444; font-size:0.82rem;'>Enter the rent you are being quoted above</p>", unsafe_allow_html=True)
 
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -456,61 +527,70 @@ with col_fair:
 st.markdown("<br>", unsafe_allow_html=True)
 
 
-# --- Tabs ---
-tab1, tab2 = st.tabs(["What's driving this price", "Comparable listings"])
+# Tabs
+tab1, tab2 = st.tabs(["What's pushing this price", "Similar listings"])
 
 with tab1:
-    st.markdown("<div class='section-label'>Feature attribution</div>", unsafe_allow_html=True)
-
     if shap_df is not None:
-        top_features = shap_df.head(6).copy()
-        top_features['label'] = top_features.iloc[:, 0].map(SHAP_LABELS).fillna(top_features.iloc[:, 0])
-        shap_values = top_features.iloc[:, 1].values
+        # Pick top 5 unique features after collapsing tier-* family
+        seen_groups = set()
+        rows_to_show = []
+        for _, r in shap_df.iterrows():
+            feat = r.iloc[0]
+            label = PLAIN_LABELS.get(feat, feat)
+            if label == 'Where this area ranks' and label in seen_groups:
+                continue
+            if label == 'Location on the map' and label in seen_groups:
+                continue
+            seen_groups.add(label)
+            rows_to_show.append((label, r.iloc[1]))
+            if len(rows_to_show) == 5:
+                break
 
-        fig, ax = plt.subplots(figsize=(7, 3.2))
-        fig.patch.set_facecolor('#1a1a1a')
-        ax.set_facecolor('#1a1a1a')
+        labels = [r[0] for r in rows_to_show]
+        values = [r[1] for r in rows_to_show]
 
-        colors = ['#c8f564' if v == max(shap_values) else '#3a4a20' for v in shap_values]
-        bars = ax.barh(top_features['label'][::-1], shap_values[::-1], color=colors[::-1], height=0.55)
+        fig, ax = plt.subplots(figsize=(7.5, 3.4))
+        fig.patch.set_facecolor('none')
+        ax.set_facecolor('none')
 
-        ax.set_xlabel('Mean |SHAP value|', color='#555', fontsize=8)
-        ax.tick_params(colors='#888', labelsize=8)
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        ax.spines['bottom'].set_color('#2a2a2a')
-        ax.spines['left'].set_color('#2a2a2a')
-        ax.xaxis.label.set_color('#555')
+        colors = ['#c8f564' if v == max(values) else '#4a5e28' for v in values]
+        ax.barh(labels[::-1], values[::-1], color=colors[::-1], height=0.55)
+
+        ax.set_xticks([])
+        ax.tick_params(colors='#bbb', labelsize=10, length=0)
+        for spine in ['top', 'right', 'bottom', 'left']:
+            ax.spines[spine].set_visible(False)
 
         plt.tight_layout()
         st.pyplot(fig, use_container_width=True)
         plt.close()
 
+        elec_band = electricity_label(st.session_state.elec_hours)
+
         st.markdown(f"""
-        <p style='font-size:0.78rem; color:#555; margin-top:8px;'>
-        <strong style='color:#888;'>Area price level</strong> is the dominant driver of rent in Lagos —
-        neighbourhood location accounts for the largest share of model variance.
-        Electricity supply ({electricity_label(elec_hours)}) is included as a pricing factor,
-        reflecting NERC band classifications across Lagos areas.
-        </p>
+        <div class='driver-explain'>
+            The biggest factor in your estimate is <strong>what rent typically looks like in {st.session_state.area_display}</strong>.
+            After that, bedroom and bathroom count make the next biggest difference. Power supply (this area is {elec_band})
+            is part of the calculation too, since Lagos rents quietly track electricity bands. Location plays a role as well:
+            how close the area sits to Victoria Island and Ikeja both feed into the final number.
+        </div>
         """, unsafe_allow_html=True)
     else:
-        st.info("SHAP importance file not found in artifacts folder. Add shap_importance_advanced.csv to model/artifacts/.")
+        st.info("SHAP importance file not found.")
 
 
 with tab2:
-    st.markdown("<div class='section-label'>Similar listings in dataset</div>", unsafe_allow_html=True)
-
     if master is not None:
         bed_col = 'bedrooms_encoded' if 'bedrooms_encoded' in master.columns else 'bedrooms_enc'
 
         comps = master[
-            (master['area_scraped'] == area_key) &
-            (master[bed_col] == bedrooms_encoded)
+            (master['area_scraped'] == st.session_state.area_key) &
+            (master[bed_col] == st.session_state.bedrooms_encoded)
         ].copy()
 
         if len(comps) == 0:
-            comps = master[master['area_scraped'] == area_key].copy()
+            comps = master[master['area_scraped'] == st.session_state.area_key].copy()
 
         comps = comps.sort_values('annual_rent_naira').head(8)
 
@@ -529,25 +609,28 @@ with tab2:
                 'annual_rent_naira': 'Annual Rent',
             }
             comp_display = comp_display.rename(columns=rename_map)
-            comp_display['Area'] = comp_display['Area'].str.replace('-', ' ').str.title()
+            if 'Area' in comp_display.columns:
+                comp_display['Area'] = comp_display['Area'].str.replace('-', ' ').str.title()
+            if 'Tier' in comp_display.columns:
+                comp_display['Tier'] = comp_display['Tier'].str.replace('-', ' ').str.title()
 
             st.dataframe(
                 comp_display,
                 use_container_width=True,
                 hide_index=True,
             )
-            st.markdown(f"<p style='font-size:0.72rem; color:#444; margin-top:4px;'>Showing {len(comp_display)} listings from the RentIQ Nigeria dataset — NigeriaPropertyCentre & PropertyPro, scraped 2025-2026.</p>", unsafe_allow_html=True)
+            st.markdown(f"<p style='font-size:0.72rem; color:#555; margin-top:6px;'>Real listings pulled from the project dataset (NigeriaPropertyCentre and PropertyPro, 2025-2026).</p>", unsafe_allow_html=True)
         else:
-            st.info("No comparable listings found for this area and bedroom combination.")
+            st.info(f"No similar listings in the dataset for {st.session_state.area_display}.")
     else:
-        st.info("rentiq_master.csv not found. Comparable listings unavailable in this deployment.")
+        st.info("Master dataset not loaded. Comparable listings unavailable.")
 
 
-# --- Footer ---
-st.markdown("---")
+# Footer
+st.markdown("<br><hr>", unsafe_allow_html=True)
 st.markdown("""
-<p style='font-size:0.7rem; color:#333; font-family:Space Mono;'>
-RentIQ Nigeria — MSc Data Science dissertation project, Pan-Atlantic University.
-Model trained on 10,999 Lagos rental listings. Predictions are estimates only.
+<p style='font-size:0.72rem; color:#444; font-family:Space Mono; line-height:1.6;'>
+Built as part of Victory Ezeala's MSc Data Science dissertation at Pan-Atlantic University.
+The model was trained on roughly 11,000 Lagos rental listings. These are estimates, not appraisals.
 </p>
 """, unsafe_allow_html=True)
