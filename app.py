@@ -18,15 +18,15 @@ st.set_page_config(
 
 # Verified Lagos background images (Unsplash, free-use, no attribution)
 TIER_BACKGROUNDS = {
-    'island':           'https://images.unsplash.com/photo-1580500550469-4f0baa4a2da3?w=1920&q=80',
-    'gra':              'https://images.unsplash.com/photo-1714329797174-67e6cbe05920?w=1920&q=80',
-    'upscale-mainland': 'https://images.unsplash.com/photo-1714329797174-67e6cbe05920?w=1920&q=80',
-    'mainland':         'https://images.unsplash.com/photo-1572931089825-cf67ec0c2e7b?w=1920&q=80',
-    'suburb':           'https://images.unsplash.com/photo-1572931089825-cf67ec0c2e7b?w=1920&q=80',
-    'outskirt':         'https://images.unsplash.com/photo-1572931089825-cf67ec0c2e7b?w=1920&q=80',
+    'island':           'https://images.unsplash.com/photo-1744907895363-d351aa6019ef?w=1920&q=80',
+    'gra':              'https://images.unsplash.com/photo-1618828665011-0abd973f7bb8?w=1920&q=80',
+    'upscale-mainland': 'https://images.unsplash.com/photo-1618828665011-0abd973f7bb8?w=1920&q=80',
+    'mainland':         'https://images.unsplash.com/photo-1580239808463-daf9766788a7?w=1920&q=80',
+    'suburb':           'https://images.unsplash.com/photo-1580239808463-daf9766788a7?w=1920&q=80',
+    'outskirt':         'https://images.unsplash.com/photo-1580239808463-daf9766788a7?w=1920&q=80',
 }
 
-DEFAULT_BG = 'https://images.unsplash.com/photo-1580500550469-4f0baa4a2da3?w=1920&q=80'
+DEFAULT_BG = 'https://images.unsplash.com/photo-1618828665011-0abd973f7bb8?w=1920&q=80'
 
 
 def render_background(tier_key):
