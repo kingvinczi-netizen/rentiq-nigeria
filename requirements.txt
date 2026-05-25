@@ -6,3 +6,5 @@ scikit-learn>=1.4.0
 pandas>=2.0.0
 numpy>=1.26.0
 matplotlib>=3.8.0
+gspread>=6.0.0
+google-auth>=2.30.0
