@@ -3,7 +3,10 @@ import pandas as pd
 import numpy as np
 import pickle
 import os
+import datetime
 import matplotlib.pyplot as plt
+import gspread
+from google.oauth2.service_account import Credentials
 
 st.set_page_config(
     page_title="RentIQ Nigeria",
@@ -13,20 +16,21 @@ st.set_page_config(
 )
 
 
-# Tier-to-image mapping (Unsplash free-use, no attribution required)
+# Verified Lagos background images (Unsplash, free-use, no attribution)
 TIER_BACKGROUNDS = {
-    'island':           'https://images.unsplash.com/photo-1668010023661-89c9bea88ade?w=1920&q=80',
-    'gra':              'https://images.unsplash.com/photo-1580500550469-4f0baa4a2da3?w=1920&q=80',
-    'upscale-mainland': 'https://images.unsplash.com/photo-1580500550469-4f0baa4a2da3?w=1920&q=80',
-    'mainland':         'https://images.unsplash.com/photo-1606298855672-3efb63017be8?w=1920&q=80',
-    'suburb':           'https://images.unsplash.com/photo-1606298855672-3efb63017be8?w=1920&q=80',
-    'outskirt':         'https://images.unsplash.com/photo-1568395216634-3acdca9eaf30?w=1920&q=80',
-    'unknown':          'https://images.unsplash.com/photo-1606298855672-3efb63017be8?w=1920&q=80',
+    'island':           'https://images.unsplash.com/photo-1580500550469-4f0baa4a2da3?w=1920&q=80',
+    'gra':              'https://images.unsplash.com/photo-1714329797174-67e6cbe05920?w=1920&q=80',
+    'upscale-mainland': 'https://images.unsplash.com/photo-1714329797174-67e6cbe05920?w=1920&q=80',
+    'mainland':         'https://images.unsplash.com/photo-1572931089825-cf67ec0c2e7b?w=1920&q=80',
+    'suburb':           'https://images.unsplash.com/photo-1572931089825-cf67ec0c2e7b?w=1920&q=80',
+    'outskirt':         'https://images.unsplash.com/photo-1572931089825-cf67ec0c2e7b?w=1920&q=80',
 }
+
+DEFAULT_BG = 'https://images.unsplash.com/photo-1580500550469-4f0baa4a2da3?w=1920&q=80'
 
 
 def render_background(tier_key):
-    img_url = TIER_BACKGROUNDS.get(tier_key, TIER_BACKGROUNDS['mainland'])
+    img_url = TIER_BACKGROUNDS.get(tier_key, DEFAULT_BG)
     st.markdown(f"""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700&family=Space+Mono:wght@400;700&display=swap');
@@ -37,7 +41,7 @@ def render_background(tier_key):
 
     .stApp {{
         background-image:
-            linear-gradient(rgba(10, 10, 10, 0.92), rgba(10, 10, 10, 0.96)),
+            linear-gradient(rgba(10, 10, 10, 0.93), rgba(10, 10, 10, 0.97)),
             url('{img_url}');
         background-size: cover;
         background-position: center;
@@ -164,19 +168,54 @@ def render_background(tier_key):
     h1, h2, h3 {{ color: #f0ede6; }}
 
     .driver-explain {{
-        background: rgba(20, 20, 20, 0.7);
-        border-left: 3px solid #c8f564;
-        padding: 14px 18px;
-        margin-top: 12px;
-        border-radius: 4px;
+        background: rgba(20, 20, 20, 0.75);
+        padding: 16px 20px;
+        margin-top: 14px;
+        border-radius: 6px;
         font-size: 0.88rem;
         color: #bbb;
-        line-height: 1.55;
+        line-height: 1.6;
     }}
 
     .driver-explain strong {{ color: #c8f564; }}
 
-    .stNumberInput label {{ font-size: 0.85rem; color: #aaa !important; }}
+    .submission-counter {{
+        text-align: right;
+        font-family: 'Space Mono', monospace;
+        font-size: 0.72rem;
+        color: #555;
+        margin-bottom: 12px;
+    }}
+
+    .submission-counter strong {{
+        color: #c8f564;
+        font-size: 0.85rem;
+    }}
+
+    .stNumberInput label, .stTextInput label {{
+        font-size: 0.85rem;
+        color: #aaa !important;
+    }}
+
+    .submit-success {{
+        background: rgba(20, 50, 20, 0.85);
+        border: 1px solid #4a8a4a;
+        border-radius: 6px;
+        padding: 14px 18px;
+        color: #8af08a;
+        font-size: 0.9rem;
+        margin-top: 12px;
+    }}
+
+    .submit-error {{
+        background: rgba(50, 20, 20, 0.85);
+        border: 1px solid #8a4a4a;
+        border-radius: 6px;
+        padding: 14px 18px;
+        color: #f08a8a;
+        font-size: 0.9rem;
+        margin-top: 12px;
+    }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -210,20 +249,21 @@ TIER_CSS = {
     'Luxury':    'tier-luxury',
 }
 
+# Plain-English SHAP labels mapped from actual feature names
 PLAIN_LABELS = {
-    'neighbourhood_median_rent': 'What the area normally costs',
-    'area_median_rent':          'Average rent in the area',
+    'neighbourhood_median_rent': 'What rent normally looks like in this area',
+    'area_median_rent':          'Local average rent',
     'bedrooms_encoded':          'Number of bedrooms',
     'bathrooms':                 'Number of bathrooms',
-    'tier_median_rent':          'Where this area ranks',
-    'tier_encoded':              'Where this area ranks',
-    'tier_target_enc':           'Where this area ranks',
+    'tier_median_rent':          'Where this area ranks in Lagos',
+    'tier_encoded':              'Where this area ranks in Lagos',
+    'tier_target_enc':           'Where this area ranks in Lagos',
     'electricity_hours':         'Electricity supply',
     'dist_to_vi_km':             'Distance to Victoria Island',
     'dist_to_ikeja_km':          'Distance to Ikeja',
-    'type_house':                'Type of property',
-    'longitude':                 'Location on the map',
-    'latitude':                  'Location on the map',
+    'type_house':                'Flat vs House',
+    'longitude':                 'Location on the Lagos map',
+    'latitude':                  'Location on the Lagos map',
 }
 
 
@@ -254,16 +294,14 @@ def load_lookup():
 
 @st.cache_data(show_spinner=False)
 def load_master():
-    drive_path = '/content/drive/MyDrive/RentIQ Nigeria/data/processed/rentiq_master.csv'
-    local_paths = [
+    candidates = [
+        '/content/drive/MyDrive/RentIQ Nigeria/data/processed/rentiq_master.csv',
         os.path.join(os.path.dirname(__file__), 'data', 'rentiq_master.csv'),
         os.path.join(os.path.dirname(__file__), 'rentiq_master.csv'),
     ]
-    if os.path.exists(drive_path):
-        return pd.read_csv(drive_path)
-    for lp in local_paths:
-        if os.path.exists(lp):
-            return pd.read_csv(lp)
+    for p in candidates:
+        if os.path.exists(p):
+            return pd.read_csv(p)
     return None
 
 
@@ -274,6 +312,46 @@ def load_shap():
     if os.path.exists(shap_path):
         return pd.read_csv(shap_path)
     return None
+
+
+@st.cache_resource(show_spinner=False)
+def get_gsheet_client():
+    """Connect to Google Sheets. Returns the worksheet or None if credentials missing."""
+    scopes = [
+        'https://www.googleapis.com/auth/spreadsheets',
+        'https://www.googleapis.com/auth/drive'
+    ]
+
+    # Try Streamlit secrets first (production)
+    try:
+        creds_dict = dict(st.secrets["gcp_service_account"])
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    except (KeyError, FileNotFoundError):
+        # Fall back to local key file (Colab/dev)
+        key_path = '/content/drive/MyDrive/RentIQ Nigeria/rentiq_sheets_key.json'
+        if os.path.exists(key_path):
+            creds = Credentials.from_service_account_file(key_path, scopes=scopes)
+        else:
+            return None
+
+    try:
+        gc = gspread.authorize(creds)
+        sh = gc.open("RentIQ Ground Truth")
+        return sh.sheet1
+    except Exception:
+        return None
+
+
+def get_submission_count():
+    """Count rows in the Google Sheet (excluding header)."""
+    try:
+        ws = get_gsheet_client()
+        if ws is None:
+            return 0
+        all_values = ws.get_all_values()
+        return max(0, len(all_values) - 1)
+    except Exception:
+        return 0
 
 
 def classify_price_tier(rent):
@@ -303,6 +381,20 @@ def format_naira(amount):
     return f"₦{amount:,.0f}"
 
 
+def format_with_commas(num_str):
+    """Take a raw digit string and return it formatted with commas."""
+    digits = ''.join(c for c in num_str if c.isdigit())
+    if not digits:
+        return ''
+    return f"{int(digits):,}"
+
+
+def parse_naira_input(formatted_str):
+    """Parse a comma-formatted string back to an integer."""
+    digits = ''.join(c for c in formatted_str if c.isdigit())
+    return int(digits) if digits else 0
+
+
 def electricity_label(hours):
     if hours >= 20:
         return "Band A (20hrs+)"
@@ -314,6 +406,12 @@ def electricity_label(hours):
         return "Band D (~8hrs)"
     else:
         return "Band E (~4hrs)"
+
+
+def auto_bathrooms(bedrooms_encoded):
+    """Sensible default for bathrooms based on bedroom count."""
+    mapping = {0: 1, 1: 1, 2: 1, 3: 2, 4: 3, 5: 4}
+    return mapping.get(bedrooms_encoded, 2)
 
 
 # Initialise session state
@@ -329,6 +427,10 @@ defaults = {
     'bedrooms_encoded': None,
     'elec_hours': None,
     'current_tier_key': 'mainland',
+    'submitted_areas': set(),
+    'last_features': None,
+    'last_prop_type': None,
+    'last_bedrooms_label': None,
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -349,6 +451,18 @@ except Exception as e:
     lookup = pd.DataFrame()
 
 
+# Build display name → key map directly from lookup
+if not lookup.empty:
+    DISPLAY_TO_KEY = {
+        area_key.replace('-', ' ').title(): area_key
+        for area_key in lookup['area_scraped'].tolist()
+    }
+    AREA_OPTIONS = sorted(DISPLAY_TO_KEY.keys())
+else:
+    DISPLAY_TO_KEY = {}
+    AREA_OPTIONS = []
+
+
 # Apply tier background
 render_background(st.session_state.current_tier_key)
 
@@ -359,12 +473,10 @@ with st.sidebar:
     st.markdown("<p style='color:#666; font-size:0.78rem; font-family:Space Mono; margin-top:-10px;'>Rental price intelligence</p>", unsafe_allow_html=True)
     st.markdown("---")
 
-    if not lookup.empty:
-        area_options = sorted(lookup['area_scraped'].str.replace('-', ' ').str.title().tolist())
-        area_display = st.selectbox("Area", area_options)
-        area_key = area_display.lower().replace(' ', '-')
+    if AREA_OPTIONS:
+        area_display = st.selectbox("Area", AREA_OPTIONS)
+        area_key = DISPLAY_TO_KEY[area_display]
 
-        # Update tier key for background as soon as area changes
         matched = lookup[lookup['area_scraped'] == area_key]
         if not matched.empty:
             new_tier = str(matched.iloc[0]['location_tier']).lower().strip()
@@ -381,7 +493,8 @@ with st.sidebar:
     bedroom_label = st.selectbox("Bedrooms", list(BEDROOM_LABELS.keys()))
     bedrooms_encoded = BEDROOM_LABELS[bedroom_label]
 
-    bathrooms = st.number_input("Bathrooms", min_value=1, max_value=8, value=2, step=1)
+    suggested_bathrooms = auto_bathrooms(bedrooms_encoded)
+    bathrooms = st.number_input("Bathrooms", min_value=1, max_value=8, value=suggested_bathrooms, step=1)
 
     elec_hours = st.slider("Hours of electricity per day", min_value=0, max_value=24, value=16, step=1)
     st.caption(electricity_label(elec_hours))
@@ -390,16 +503,31 @@ with st.sidebar:
     predict_clicked = st.button("Predict rent", use_container_width=True)
 
 
-# Main panel header
-st.markdown("<h1 style='font-family:Space Mono; font-size:1.6rem; color:#c8f564; margin-bottom:2px;'>RentIQ Nigeria</h1>", unsafe_allow_html=True)
-st.markdown("<p style='color:#777; font-size:0.82rem; margin-top:0; margin-bottom:24px;'>Annual rental price estimates for Lagos residential property</p>", unsafe_allow_html=True)
+# Header with submission counter
+header_col, counter_col = st.columns([3, 2])
+
+with header_col:
+    st.markdown("<h1 style='font-family:Space Mono; font-size:1.6rem; color:#c8f564; margin-bottom:2px;'>RentIQ Nigeria</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='color:#777; font-size:0.82rem; margin-top:0;'>Annual rental price estimates for Lagos residential property</p>", unsafe_allow_html=True)
+
+with counter_col:
+    submission_count = get_submission_count()
+    if submission_count > 0:
+        st.markdown(f"""
+        <div class='submission-counter'>
+            <strong>{submission_count}</strong> real rents submitted by users
+        </div>
+        """, unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
+
 
 if not models_loaded:
-    st.error(f"Could not load model files. Check that all pkl files are in the artifacts folder.\n\n{load_error}")
+    st.error(f"Could not load model files.\n\n{load_error}")
     st.stop()
 
 
-# Run prediction when button is clicked, save results to session_state
+# Run prediction
 if predict_clicked:
     row = lookup[lookup['area_scraped'] == area_key]
 
@@ -425,7 +553,8 @@ if predict_clicked:
         'tier_target_enc':           float(row['tier_target_enc']),
     }
 
-    predicted, p10, p90 = predict_rent(ensemble, p10_model, p90_model, features_dict)
+    with st.spinner('Calculating...'):
+        predicted, p10, p90 = predict_rent(ensemble, p10_model, p90_model, features_dict)
 
     st.session_state.prediction_done = True
     st.session_state.predicted = predicted
@@ -437,9 +566,12 @@ if predict_clicked:
     st.session_state.area_key = area_key
     st.session_state.bedrooms_encoded = bedrooms_encoded
     st.session_state.elec_hours = elec_hours
+    st.session_state.last_features = features_dict
+    st.session_state.last_prop_type = prop_type
+    st.session_state.last_bedrooms_label = bedroom_label
+    st.session_state.last_bathrooms = int(bathrooms)
 
 
-# Placeholder if nothing predicted yet
 if not st.session_state.prediction_done:
     st.markdown("""
     <div style='margin-top:80px; text-align:center; color:#444;'>
@@ -486,14 +618,19 @@ with col_fair:
 
     st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
 
-    quoted = st.number_input(
+    quoted_str = st.text_input(
         "Enter the rent you are being quoted (₦)",
-        min_value=0,
-        value=0,
-        step=100_000,
-        format="%d",
-        key="quoted_input"
+        value="",
+        key="quoted_input_str",
+        placeholder="e.g. 2,500,000"
     )
+
+    if quoted_str:
+        formatted = format_with_commas(quoted_str)
+        if formatted != quoted_str:
+            st.markdown(f"<p style='font-size:0.78rem; color:#888; margin-top:-8px;'>Reading as: ₦{formatted}</p>", unsafe_allow_html=True)
+
+    quoted = parse_naira_input(quoted_str)
 
     if quoted > 0:
         delta_pct = ((quoted - predicted) / predicted) * 100
@@ -516,7 +653,7 @@ with col_fair:
             <span style='color:#888; font-size:0.85rem;'>{verdict_detail}</span><br>
             <span style='color:#555; font-size:0.78rem; margin-top:8px; display:block; line-height:1.6;'>
                 Our estimate: {format_naira(predicted)}<br>
-                You were quoted: {format_naira(quoted)}
+                You were quoted: ₦{quoted:,}
             </span>
         </div>
         """, unsafe_allow_html=True)
@@ -528,39 +665,49 @@ st.markdown("<br>", unsafe_allow_html=True)
 
 
 # Tabs
-tab1, tab2 = st.tabs(["What's pushing this price", "Similar listings"])
+tab1, tab2, tab3 = st.tabs(["What's pushing this price", "Similar listings", "Submit your real rent"])
 
 with tab1:
     if shap_df is not None:
-        # Pick top 5 unique features after collapsing tier-* family
+        # Use the actual top features in ranked order, collapsing tier-family
         seen_groups = set()
         rows_to_show = []
-        for _, r in shap_df.iterrows():
-            feat = r.iloc[0]
+        sorted_shap = shap_df.sort_values('mean_abs_shap', ascending=False)
+
+        for _, r in sorted_shap.iterrows():
+            feat = r['feature']
             label = PLAIN_LABELS.get(feat, feat)
-            if label == 'Where this area ranks' and label in seen_groups:
-                continue
-            if label == 'Location on the map' and label in seen_groups:
+            if label in seen_groups:
                 continue
             seen_groups.add(label)
-            rows_to_show.append((label, r.iloc[1]))
-            if len(rows_to_show) == 5:
+            rows_to_show.append((label, r['mean_abs_shap']))
+            if len(rows_to_show) == 6:
                 break
 
         labels = [r[0] for r in rows_to_show]
         values = [r[1] for r in rows_to_show]
+        total = sum(values)
+        percentages = [v / total * 100 for v in values]
 
-        fig, ax = plt.subplots(figsize=(7.5, 3.4))
+        fig, ax = plt.subplots(figsize=(8, 3.6))
         fig.patch.set_facecolor('none')
         ax.set_facecolor('none')
 
-        colors = ['#c8f564' if v == max(values) else '#4a5e28' for v in values]
-        ax.barh(labels[::-1], values[::-1], color=colors[::-1], height=0.55)
+        colors = ['#c8f564' if v == max(values) else '#5a6e38' for v in values]
+        bars = ax.barh(labels[::-1], values[::-1], color=colors[::-1], height=0.55)
+
+        for i, (bar, pct) in enumerate(zip(bars, percentages[::-1])):
+            width = bar.get_width()
+            ax.text(width + max(values) * 0.02, bar.get_y() + bar.get_height()/2,
+                    f'{pct:.0f}% of decision',
+                    va='center', fontsize=9, color='#aaa', family='monospace')
 
         ax.set_xticks([])
-        ax.tick_params(colors='#bbb', labelsize=10, length=0)
+        ax.tick_params(colors='#ccc', labelsize=10, length=0)
         for spine in ['top', 'right', 'bottom', 'left']:
             ax.spines[spine].set_visible(False)
+
+        ax.set_xlim(0, max(values) * 1.25)
 
         plt.tight_layout()
         st.pyplot(fig, use_container_width=True)
@@ -571,9 +718,8 @@ with tab1:
         st.markdown(f"""
         <div class='driver-explain'>
             The biggest factor in your estimate is <strong>what rent typically looks like in {st.session_state.area_display}</strong>.
-            After that, bedroom and bathroom count make the next biggest difference. Power supply (this area is {elec_band})
-            is part of the calculation too, since Lagos rents quietly track electricity bands. Location plays a role as well:
-            how close the area sits to Victoria Island and Ikeja both feed into the final number.
+            After that, bedroom and bathroom count make the next biggest difference. Power supply matters too (this area is {elec_band}),
+            since rents in Lagos quietly track electricity bands. Location plays a role as well, especially how close the area sits to Victoria Island.
         </div>
         """, unsafe_allow_html=True)
     else:
@@ -614,16 +760,121 @@ with tab2:
             if 'Tier' in comp_display.columns:
                 comp_display['Tier'] = comp_display['Tier'].str.replace('-', ' ').str.title()
 
-            st.dataframe(
-                comp_display,
-                use_container_width=True,
-                hide_index=True,
-            )
+            st.dataframe(comp_display, use_container_width=True, hide_index=True)
             st.markdown(f"<p style='font-size:0.72rem; color:#555; margin-top:6px;'>Real listings pulled from the project dataset (NigeriaPropertyCentre and PropertyPro, 2025-2026).</p>", unsafe_allow_html=True)
         else:
             st.info(f"No similar listings in the dataset for {st.session_state.area_display}.")
     else:
         st.info("Master dataset not loaded. Comparable listings unavailable.")
+
+
+with tab3:
+    st.markdown("<div class='section-label'>Help improve the model</div>", unsafe_allow_html=True)
+
+    st.markdown("""
+    <p style='color:#aaa; font-size:0.9rem; line-height:1.6;'>
+    If you actually live in <strong style='color:#c8f564;'>""" + st.session_state.area_display + """</strong> or you've recently rented somewhere in Lagos, share what you actually paid.
+    Your submission is anonymous and helps the model learn from real transactions, not just listing asking prices.
+    </p>
+    """, unsafe_allow_html=True)
+
+    with st.form("ground_truth_form", clear_on_submit=True):
+        col_a, col_b = st.columns(2)
+
+        with col_a:
+            submit_area = st.selectbox(
+                "Area",
+                AREA_OPTIONS,
+                index=AREA_OPTIONS.index(st.session_state.area_display) if st.session_state.area_display in AREA_OPTIONS else 0,
+                key="submit_area"
+            )
+            submit_bedrooms = st.selectbox(
+                "Bedrooms",
+                list(BEDROOM_LABELS.keys()),
+                index=list(BEDROOM_LABELS.keys()).index(st.session_state.last_bedrooms_label) if st.session_state.last_bedrooms_label else 2,
+                key="submit_bedrooms"
+            )
+            submit_bathrooms = st.number_input(
+                "Bathrooms", min_value=1, max_value=8,
+                value=st.session_state.last_bathrooms if st.session_state.last_bathrooms else 2,
+                key="submit_bathrooms"
+            )
+
+        with col_b:
+            submit_prop_type = st.radio(
+                "Property type",
+                ["Flat / Apartment", "House / Duplex"],
+                index=0 if st.session_state.last_prop_type == "Flat / Apartment" else 1,
+                horizontal=True,
+                key="submit_prop_type"
+            )
+            submit_elec = st.slider(
+                "Hours of electricity per day",
+                min_value=0, max_value=24,
+                value=st.session_state.elec_hours if st.session_state.elec_hours else 16,
+                key="submit_elec"
+            )
+            submit_year = st.number_input(
+                "Year you paid this rent",
+                min_value=2020, max_value=2026, value=2026,
+                key="submit_year"
+            )
+
+        submit_rent_str = st.text_input(
+            "What you actually paid (annual rent, ₦)",
+            value="",
+            placeholder="e.g. 1,500,000",
+            key="submit_rent_str"
+        )
+
+        if submit_rent_str:
+            formatted_submit = format_with_commas(submit_rent_str)
+            if formatted_submit != submit_rent_str:
+                st.markdown(f"<p style='font-size:0.78rem; color:#888; margin-top:-12px;'>Reading as: ₦{formatted_submit}</p>", unsafe_allow_html=True)
+
+        submit_note = st.text_input(
+            "Anything we should know? (optional)",
+            value="",
+            placeholder="e.g. fully furnished, security included, etc.",
+            key="submit_note"
+        )
+
+        form_submit = st.form_submit_button("Submit anonymously")
+
+        if form_submit:
+            submit_rent_value = parse_naira_input(submit_rent_str)
+
+            # Validation
+            if submit_rent_value < 100_000:
+                st.markdown("<div class='submit-error'>Rent below ₦100,000 looks like a typo. Please check and try again.</div>", unsafe_allow_html=True)
+            elif submit_rent_value > 300_000_000:
+                st.markdown("<div class='submit-error'>Rent above ₦300m looks unusual. Please check and try again.</div>", unsafe_allow_html=True)
+            elif submit_area in st.session_state.submitted_areas:
+                st.markdown("<div class='submit-error'>You've already submitted for this area in this session. Thank you for your contribution.</div>", unsafe_allow_html=True)
+            else:
+                try:
+                    ws = get_gsheet_client()
+                    if ws is None:
+                        st.markdown("<div class='submit-error'>Submission service is not configured. Please try again later.</div>", unsafe_allow_html=True)
+                    else:
+                        submit_area_key = DISPLAY_TO_KEY.get(submit_area, submit_area.lower().replace(' ', '-'))
+                        ws.append_row([
+                            datetime.datetime.now().isoformat(),
+                            submit_area_key,
+                            str(BEDROOM_LABELS[submit_bedrooms]),
+                            str(submit_bathrooms),
+                            'house' if 'House' in submit_prop_type else 'flat',
+                            str(submit_elec),
+                            str(submit_rent_value),
+                            str(submit_year),
+                            submit_note,
+                        ])
+                        st.session_state.submitted_areas.add(submit_area)
+                        # Bust the count cache
+                        get_submission_count.clear() if hasattr(get_submission_count, 'clear') else None
+                        st.markdown(f"<div class='submit-success'>Submitted. Thank you for contributing real rent data from {submit_area}.</div>", unsafe_allow_html=True)
+                except Exception as e:
+                    st.markdown(f"<div class='submit-error'>Could not submit: {str(e)[:100]}</div>", unsafe_allow_html=True)
 
 
 # Footer
