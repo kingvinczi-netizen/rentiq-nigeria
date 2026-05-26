@@ -90,7 +90,7 @@ def render_background(tier_key):
     .tier-budget    {{ background: #1a2e1a; color: #6fcf6f; border: 1px solid #3a5e3a; }}
     .tier-midrange  {{ background: #2e2a14; color: #f0c040; border: 1px solid #5e521a; }}
     .tier-premium   {{ background: #2a1e14; color: #f09060; border: 1px solid #5e3a20; }}
-    .tier-luxury    {{ background: #1e1430; color: #b090f0; border: 1px solid #3a2060; }}
+    .tier-highend   {{ background: #1e1430; color: #b090f0; border: 1px solid #3a2060; }}
     .tier-elite     {{ background: #2e1430; color: #e090d0; border: 1px solid #5e2060; }}
 
     .location-pill {{
@@ -105,6 +105,14 @@ def render_background(tier_key):
         color: #aaa;
         margin-left: 10px;
         vertical-align: middle;
+    }}
+
+    .alias-note {{
+        font-size: 0.72rem;
+        color: #666;
+        font-family: 'Space Mono', monospace;
+        margin-top: 4px;
+        margin-bottom: 2px;
     }}
 
     .verdict-fair    {{ color: #6fcf6f; font-weight: 700; font-size: 1.3rem; }}
@@ -193,7 +201,7 @@ def render_background(tier_key):
         font-size: 0.85rem;
     }}
 
-    .stNumberInput label, .stTextInput label {{
+    .stNumberInput label, .stTextInput label, .stSelectbox label {{
         font-size: 0.85rem;
         color: #aaa !important;
     }}
@@ -244,39 +252,9 @@ def render_background(tier_key):
         border: 1px solid rgba(60, 60, 60, 0.4);
     }}
 
-    .whatif-delta-up {{
-        color: #f09060;
-        font-family: 'Space Mono', monospace;
-        font-size: 0.95rem;
-        font-weight: 700;
-    }}
-
-    .whatif-delta-down {{
-        color: #6fcf6f;
-        font-family: 'Space Mono', monospace;
-        font-size: 0.95rem;
-        font-weight: 700;
-    }}
-
-    .whatif-delta-zero {{
-        color: #888;
-        font-family: 'Space Mono', monospace;
-        font-size: 0.95rem;
-    }}
-
-    div[data-testid="stExpander"] {{
-        background: rgba(20, 20, 20, 0.65);
-        border: 1px solid rgba(60, 60, 60, 0.4);
-        border-radius: 6px;
-        margin-top: 16px;
-    }}
-
-    div[data-testid="stExpander"] summary {{
-        font-family: 'Space Mono', monospace;
-        font-size: 0.78rem;
-        color: #aaa;
-        letter-spacing: 1px;
-    }}
+    .whatif-delta-up   {{ color: #f09060; font-family: 'Space Mono', monospace; font-size: 0.95rem; font-weight: 700; }}
+    .whatif-delta-down {{ color: #6fcf6f; font-family: 'Space Mono', monospace; font-size: 0.95rem; font-weight: 700; }}
+    .whatif-delta-zero {{ color: #888; font-family: 'Space Mono', monospace; font-size: 0.95rem; }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -296,13 +274,11 @@ BEDROOM_LABELS = {
     '4+ Bedrooms': 5,
 }
 
-BEDROOM_REVERSE = {v: k for k, v in BEDROOM_LABELS.items()}
-
 PRICE_TIERS = {
-    'Budget':    (0,         700_000),
-    'Mid-range': (700_000,   2_500_000),
-    'Premium':   (2_500_000, 7_000_000),
-    'High-end':  (7_000_000, 20_000_000),
+    'Budget':    (0,          700_000),
+    'Mid-range': (700_000,    2_500_000),
+    'Premium':   (2_500_000,  7_000_000),
+    'High-end':  (7_000_000,  20_000_000),
     'Elite':     (20_000_000, float('inf')),
 }
 
@@ -310,7 +286,7 @@ TIER_CSS = {
     'Budget':    'tier-budget',
     'Mid-range': 'tier-midrange',
     'Premium':   'tier-premium',
-    'High-end':  'tier-luxury',
+    'High-end':  'tier-highend',
     'Elite':     'tier-elite',
 }
 
@@ -357,6 +333,15 @@ def load_lookup():
 
 
 @st.cache_data(show_spinner=False)
+def load_aliases():
+    path = get_artifacts_path()
+    alias_path = f'{path}/area_aliases.csv'
+    if os.path.exists(alias_path):
+        return pd.read_csv(alias_path)
+    return pd.DataFrame(columns=['alias', 'parent_area', 'multiplier', 'tier_hint'])
+
+
+@st.cache_data(show_spinner=False)
 def load_master():
     candidates = [
         '/content/drive/MyDrive/RentIQ Nigeria/data/processed/rentiq_master.csv',
@@ -395,8 +380,7 @@ def get_gsheet_client():
             return None
     try:
         gc = gspread.authorize(creds)
-        sh = gc.open("RentIQ Ground Truth")
-        return sh.sheet1
+        return gc.open("RentIQ Ground Truth").sheet1
     except Exception:
         return None
 
@@ -406,17 +390,48 @@ def get_submission_count():
         ws = get_gsheet_client()
         if ws is None:
             return 0
-        all_values = ws.get_all_values()
-        return max(0, len(all_values) - 1)
+        return max(0, len(ws.get_all_values()) - 1)
     except Exception:
         return 0
+
+
+def build_search_options(lookup, aliases):
+    """
+    Build the full list of searchable options combining:
+    1. The 33 direct model areas (displayed as title case)
+    2. All aliases from area_aliases.csv
+    Returns a dict: display_name -> {type, key, multiplier, tier_hint}
+    """
+    options = {}
+
+    # Direct model areas
+    for _, row in lookup.iterrows():
+        display = row['area_scraped'].replace('-', ' ').title()
+        options[display] = {
+            'type': 'direct',
+            'key': row['area_scraped'],
+            'multiplier': 1.0,
+            'tier_hint': row['location_tier'],
+        }
+
+    # Aliases
+    for _, row in aliases.iterrows():
+        alias_display = str(row['alias']).strip()
+        options[alias_display] = {
+            'type': 'alias',
+            'key': str(row['parent_area']).strip(),
+            'multiplier': float(row['multiplier']),
+            'tier_hint': str(row['tier_hint']).strip(),
+        }
+
+    return options
 
 
 def classify_price_tier(rent):
     for tier, (low, high) in PRICE_TIERS.items():
         if low <= rent < high:
             return tier
-    return 'Luxury'
+    return 'Elite'
 
 
 def predict_rent(ensemble, p10_model, p90_model, features_dict):
@@ -432,7 +447,6 @@ def predict_rent(ensemble, p10_model, p90_model, features_dict):
 
 
 def predict_point_only(ensemble, features_dict):
-    """Faster single-point prediction for what-if scenarios."""
     X = pd.DataFrame([features_dict], columns=FEATURES_V2)
     xgb_pred = ensemble['xgb'].predict(X)[0]
     lgb_pred = ensemble['lgb'].predict(X)[0]
@@ -499,15 +513,20 @@ defaults = {
     'last_bathrooms': None,
     'last_lat': None,
     'last_lng': None,
+    'last_multiplier': 1.0,
+    'is_alias': False,
+    'alias_parent': None,
 }
 for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
 
+# Load everything
 try:
     ensemble, p10_model, p90_model = load_models()
     lookup = load_lookup()
+    aliases = load_aliases()
     master = load_master()
     shap_df = load_shap()
     models_loaded = True
@@ -516,17 +535,16 @@ except Exception as e:
     models_loaded = False
     load_error = str(e)
     lookup = pd.DataFrame()
+    aliases = pd.DataFrame()
 
 
+# Build search options
 if not lookup.empty:
-    DISPLAY_TO_KEY = {
-        area_key.replace('-', ' ').title(): area_key
-        for area_key in lookup['area_scraped'].tolist()
-    }
-    AREA_OPTIONS = sorted(DISPLAY_TO_KEY.keys())
+    SEARCH_OPTIONS = build_search_options(lookup, aliases)
+    ALL_AREA_NAMES = sorted(SEARCH_OPTIONS.keys())
 else:
-    DISPLAY_TO_KEY = {}
-    AREA_OPTIONS = []
+    SEARCH_OPTIONS = {}
+    ALL_AREA_NAMES = []
 
 
 render_background(st.session_state.current_tier_key)
@@ -538,19 +556,43 @@ with st.sidebar:
     st.markdown("<p style='color:#666; font-size:0.78rem; font-family:Space Mono; margin-top:-10px;'>Rental price intelligence</p>", unsafe_allow_html=True)
     st.markdown("---")
 
-    if AREA_OPTIONS:
-        area_display = st.selectbox("Area", AREA_OPTIONS)
-        area_key = DISPLAY_TO_KEY[area_display]
+    if ALL_AREA_NAMES:
+        area_display = st.selectbox(
+            "Search area",
+            ALL_AREA_NAMES,
+            help="Type to search — includes estates, GRAs, and sub-areas"
+        )
 
+        area_info = SEARCH_OPTIONS.get(area_display, {})
+        area_key = area_info.get('key', '')
+        multiplier = area_info.get('multiplier', 1.0)
+        is_alias = area_info.get('type') == 'alias'
+        tier_hint = area_info.get('tier_hint', 'mainland')
+
+        # Show alias note if applicable
+        if is_alias and multiplier != 1.0:
+            parent_display = area_key.replace('-', ' ').title()
+            if multiplier > 1.0:
+                pct = f"+{(multiplier-1)*100:.0f}% vs {parent_display}"
+            else:
+                pct = f"{(multiplier-1)*100:.0f}% vs {parent_display}"
+            st.markdown(f"<p class='alias-note'>{pct}</p>", unsafe_allow_html=True)
+
+        # Update background tier
         matched = lookup[lookup['area_scraped'] == area_key]
         if not matched.empty:
             new_tier = str(matched.iloc[0]['location_tier']).lower().strip()
-            if new_tier != st.session_state.current_tier_key:
-                st.session_state.current_tier_key = new_tier
-                st.rerun()
+        else:
+            new_tier = tier_hint.lower().strip()
+
+        if new_tier != st.session_state.current_tier_key:
+            st.session_state.current_tier_key = new_tier
+            st.rerun()
     else:
         area_display = ""
         area_key = ""
+        multiplier = 1.0
+        is_alias = False
 
     prop_type = st.radio("Property type", ["Flat / Apartment", "House / Duplex"], horizontal=True)
     type_house = 1 if "House" in prop_type else 0
@@ -568,7 +610,7 @@ with st.sidebar:
     predict_clicked = st.button("Predict rent", use_container_width=True)
 
 
-# Header with submission counter
+# Header
 header_col, counter_col = st.columns([3, 2])
 
 with header_col:
@@ -597,7 +639,7 @@ if predict_clicked:
     row = lookup[lookup['area_scraped'] == area_key]
 
     if row.empty:
-        st.error(f"Area '{area_display}' not found in lookup table.")
+        st.error(f"Area '{area_display}' not found. Please try a different area.")
         st.stop()
 
     row = row.iloc[0]
@@ -619,7 +661,12 @@ if predict_clicked:
     }
 
     with st.spinner('Calculating...'):
-        predicted, p10, p90 = predict_rent(ensemble, p10_model, p90_model, features_dict)
+        raw_predicted, raw_p10, raw_p90 = predict_rent(ensemble, p10_model, p90_model, features_dict)
+
+    # Apply alias multiplier
+    predicted = raw_predicted * multiplier
+    p10 = raw_p10 * multiplier
+    p90 = raw_p90 * multiplier
 
     st.session_state.prediction_done = True
     st.session_state.predicted = predicted
@@ -637,12 +684,15 @@ if predict_clicked:
     st.session_state.last_bathrooms = int(bathrooms)
     st.session_state.last_lat = float(row['latitude'])
     st.session_state.last_lng = float(row['longitude'])
+    st.session_state.last_multiplier = multiplier
+    st.session_state.is_alias = is_alias
+    st.session_state.alias_parent = area_key if is_alias else None
 
 
 if not st.session_state.prediction_done:
     st.markdown("""
     <div style='margin-top:80px; text-align:center; color:#444;'>
-        <p style='font-family:Space Mono; font-size:0.9rem;'>Select your property details in the sidebar and click <strong style='color:#c8f564;'>Predict rent</strong></p>
+        <p style='font-family:Space Mono; font-size:0.9rem;'>Search for an area in the sidebar and click <strong style='color:#c8f564;'>Predict rent</strong></p>
     </div>
     """, unsafe_allow_html=True)
     st.stop()
@@ -662,8 +712,16 @@ with col_result:
     p10_safe = min(p10, predicted * 0.98)
     p90_safe = max(p90, predicted * 1.02)
 
+    alias_note_html = ""
+    if st.session_state.is_alias and st.session_state.last_multiplier != 1.0:
+        parent_name = st.session_state.alias_parent.replace('-', ' ').title()
+        m = st.session_state.last_multiplier
+        pct_str = f"+{(m-1)*100:.0f}%" if m > 1.0 else f"{(m-1)*100:.0f}%"
+        alias_note_html = f"<div style='font-size:0.72rem; color:#666; font-family:Space Mono; margin-bottom:8px;'>Based on {parent_name} model ({pct_str} area adjustment)</div>"
+
     st.markdown(f"""
     <div class='metric-card'>
+        {alias_note_html}
         <div class='rent-display'>{format_naira(predicted)}</div>
         <div class='rent-range'>Range: {format_naira(p10_safe)} to {format_naira(p90_safe)} &nbsp; <span style='font-size:0.7rem; color:#444;'>(80% confidence)</span></div>
         <div>
@@ -673,7 +731,7 @@ with col_result:
     </div>
     """, unsafe_allow_html=True)
 
-    # Copyable summary line
+    # Copyable summary
     bedroom_text = st.session_state.last_bedrooms_label.lower()
     prop_text = "flat" if "Flat" in st.session_state.last_prop_type else "house"
     elec_text = electricity_label(st.session_state.elec_hours)
@@ -689,14 +747,13 @@ with col_result:
     st.markdown("""
     <div class='warning-box'>
         Listings on the major Nigerian property sites usually show asking prices.
-        Real Lagos rents come in 10 to 20 percent lower after negotiation, so adjust the number above accordingly.
+        Real Lagos rents come in 10 to 20 percent lower after negotiation, so adjust accordingly.
     </div>
     """, unsafe_allow_html=True)
 
 
 with col_fair:
     st.markdown("<div class='section-label'>Is this rent fair?</div>", unsafe_allow_html=True)
-
     st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
 
     quoted_str = st.text_input(
@@ -745,7 +802,7 @@ with col_fair:
 st.markdown("<br>", unsafe_allow_html=True)
 
 
-# Tabs - now with map and what-if added
+# Tabs
 tab1, tab_map, tab_whatif, tab2, tab3 = st.tabs([
     "What's pushing this price",
     "Map",
@@ -782,7 +839,7 @@ with tab1:
         colors = ['#c8f564' if v == max(values) else '#5a6e38' for v in values]
         bars = ax.barh(labels[::-1], values[::-1], color=colors[::-1], height=0.55)
 
-        for i, (bar, pct) in enumerate(zip(bars, percentages[::-1])):
+        for bar, pct in zip(bars, percentages[::-1]):
             width = bar.get_width()
             ax.text(width + max(values) * 0.02, bar.get_y() + bar.get_height()/2,
                     f'{pct:.0f}% of decision',
@@ -792,7 +849,6 @@ with tab1:
         ax.tick_params(colors='#ccc', labelsize=10, length=0)
         for spine in ['top', 'right', 'bottom', 'left']:
             ax.spines[spine].set_visible(False)
-
         ax.set_xlim(0, max(values) * 1.25)
 
         plt.tight_layout()
@@ -800,7 +856,6 @@ with tab1:
         plt.close()
 
         elec_band = electricity_label(st.session_state.elec_hours)
-
         st.markdown(f"""
         <div class='driver-explain'>
             The biggest factor in your estimate is <strong>what rent typically looks like in {st.session_state.area_display}</strong>.
@@ -820,7 +875,6 @@ with tab_map:
             'name': [st.session_state.area_display],
         })
 
-        # Use pydeck for a nicer dark themed map with a visible pin
         view_state = pdk.ViewState(
             latitude=st.session_state.last_lat,
             longitude=st.session_state.last_lng,
@@ -847,10 +901,14 @@ with tab_map:
 
         st.pydeck_chart(deck, use_container_width=True)
 
+        alias_map_note = ""
+        if st.session_state.is_alias:
+            parent_name = st.session_state.alias_parent.replace('-', ' ').title() if st.session_state.alias_parent else ""
+            alias_map_note = f" Pin shows {parent_name} area centroid (nearest model area to {st.session_state.area_display})."
+
         st.markdown(f"""
         <p style='font-size:0.78rem; color:#666; margin-top:8px;'>
-        Showing {st.session_state.area_display} at approximately ({st.session_state.last_lat:.4f}, {st.session_state.last_lng:.4f}).
-        Coordinates derived from OpenStreetMap Nominatim during the Phase 3 geocoding pipeline.
+        Showing {st.session_state.area_display} at approximately ({st.session_state.last_lat:.4f}, {st.session_state.last_lng:.4f}).{alias_map_note}
         </p>
         """, unsafe_allow_html=True)
     else:
@@ -859,7 +917,6 @@ with tab_map:
 
 with tab_whatif:
     st.markdown("<div class='section-label'>See how changes affect the price</div>", unsafe_allow_html=True)
-
     st.markdown("""
     <p style='color:#aaa; font-size:0.85rem; line-height:1.6; margin-bottom:8px;'>
     Adjust any of these to see how the estimate changes. The original prediction stays as your baseline.
@@ -867,7 +924,6 @@ with tab_whatif:
     """, unsafe_allow_html=True)
 
     wi_col1, wi_col2 = st.columns(2)
-
     base_features = st.session_state.last_features.copy()
 
     with wi_col1:
@@ -904,22 +960,15 @@ with tab_whatif:
         )
         wi_type_house = 1 if "House" in wi_prop_type else 0
 
-    # Build modified features
     wi_features = base_features.copy()
     wi_features['bedrooms_encoded'] = wi_bedrooms
     wi_features['bathrooms'] = int(wi_bathrooms)
     wi_features['type_house'] = wi_type_house
     wi_features['electricity_hours'] = float(wi_elec)
 
-    # Only re-predict if something actually changed
-    changed = (
-        wi_bedrooms != st.session_state.bedrooms_encoded or
-        wi_bathrooms != st.session_state.last_bathrooms or
-        wi_type_house != base_features['type_house'] or
-        wi_elec != st.session_state.elec_hours
-    )
+    wi_raw = predict_point_only(ensemble, wi_features)
+    wi_predicted = wi_raw * st.session_state.last_multiplier
 
-    wi_predicted = predict_point_only(ensemble, wi_features)
     delta = wi_predicted - predicted
     delta_pct = (delta / predicted) * 100 if predicted else 0
 
@@ -981,8 +1030,14 @@ with tab2:
             if 'Tier' in comp_display.columns:
                 comp_display['Tier'] = comp_display['Tier'].str.replace('-', ' ').str.title()
 
+            alias_note = ""
+            if st.session_state.is_alias:
+                parent_name = st.session_state.alias_parent.replace('-', ' ').title() if st.session_state.alias_parent else ""
+                alias_note = f"<p style='font-size:0.72rem; color:#666; margin-bottom:8px;'>Showing listings from {parent_name} (nearest area in dataset to {st.session_state.area_display}).</p>"
+            st.markdown(alias_note, unsafe_allow_html=True)
+
             st.dataframe(comp_display, use_container_width=True, hide_index=True)
-            st.markdown(f"<p style='font-size:0.72rem; color:#555; margin-top:6px;'>Real listings pulled from the project dataset (NigeriaPropertyCentre and PropertyPro, 2025-2026).</p>", unsafe_allow_html=True)
+            st.markdown("<p style='font-size:0.72rem; color:#555; margin-top:6px;'>Real listings from the project dataset (NigeriaPropertyCentre and PropertyPro, 2025-2026).</p>", unsafe_allow_html=True)
         else:
             st.info(f"No similar listings in the dataset for {st.session_state.area_display}.")
     else:
@@ -991,7 +1046,6 @@ with tab2:
 
 with tab3:
     st.markdown("<div class='section-label'>Help improve the model</div>", unsafe_allow_html=True)
-
     st.markdown("""
     <p style='color:#aaa; font-size:0.9rem; line-height:1.6;'>
     If you actually live in <strong style='color:#c8f564;'>""" + st.session_state.area_display + """</strong> or you've recently rented somewhere in Lagos, share what you actually paid.
@@ -1005,8 +1059,8 @@ with tab3:
         with col_a:
             submit_area = st.selectbox(
                 "Area",
-                AREA_OPTIONS,
-                index=AREA_OPTIONS.index(st.session_state.area_display) if st.session_state.area_display in AREA_OPTIONS else 0,
+                ALL_AREA_NAMES,
+                index=ALL_AREA_NAMES.index(st.session_state.area_display) if st.session_state.area_display in ALL_AREA_NAMES else 0,
                 key="submit_area"
             )
             submit_bedrooms = st.selectbox(
@@ -1070,14 +1124,15 @@ with tab3:
             elif submit_rent_value > 300_000_000:
                 st.markdown("<div class='submit-error'>Rent above ₦300m looks unusual. Please check and try again.</div>", unsafe_allow_html=True)
             elif submit_area in st.session_state.submitted_areas:
-                st.markdown("<div class='submit-error'>You've already submitted for this area in this session. Thank you for your contribution.</div>", unsafe_allow_html=True)
+                st.markdown("<div class='submit-error'>You've already submitted for this area in this session. Thank you.</div>", unsafe_allow_html=True)
             else:
                 try:
                     ws = get_gsheet_client()
                     if ws is None:
-                        st.markdown("<div class='submit-error'>Submission service is not configured. Please try again later.</div>", unsafe_allow_html=True)
+                        st.markdown("<div class='submit-error'>Submission service unavailable. Please try again later.</div>", unsafe_allow_html=True)
                     else:
-                        submit_area_key = DISPLAY_TO_KEY.get(submit_area, submit_area.lower().replace(' ', '-'))
+                        submit_info = SEARCH_OPTIONS.get(submit_area, {})
+                        submit_area_key = submit_info.get('key', submit_area.lower().replace(' ', '-'))
                         ws.append_row([
                             datetime.datetime.now().isoformat(),
                             submit_area_key,
@@ -1097,7 +1152,7 @@ with tab3:
                     st.markdown(f"<div class='submit-error'>Could not submit: {str(e)[:100]}</div>", unsafe_allow_html=True)
 
 
-# Footer with tiny how-it-works link
+# Footer
 st.markdown("<br><hr>", unsafe_allow_html=True)
 
 footer_col1, footer_col2 = st.columns([4, 1])
@@ -1118,12 +1173,13 @@ with footer_col2:
             NigeriaPropertyCentre and PropertyPro over 2025-2026. The model combines XGBoost, LightGBM, and CatBoost predictions,
             with a Ridge regression on top that learns how to weight each base model. Confidence intervals come from quantile regression.
             <br><br>
-            The 33 areas in the dropdown are filtered for data quality: each one has at least 10 listings in the training set,
-            which keeps the median rent calculation reliable. Electricity bands are based on NERC's official feeder classifications,
-            sourced from six separate documents including EKEDC's March 2024 Energy Cap PDF and the July 2025 supplementary orders.
+            The 33 core model areas are filtered for data quality — each has at least 10 listings in the training set.
+            Alias areas (like Banana Island, Lekki Phase 1, Ikeja GRA) use the nearest core area as the model input,
+            with a price adjustment multiplier derived from known market relationships.
+            Electricity bands are based on NERC's official feeder classifications from six source documents.
             <br><br>
-            Overall test R² is 0.91 with an 80% confidence interval that covers 79.5% of held-out predictions, so uncertainty
-            estimates are well-calibrated. The model is least accurate for top-tier properties because the features driving
-            variance there (waterfront position, floor area, finishing grade) are not consistently published on listing sites.
+            Overall test R² is 0.91 with an 80% confidence interval covering 79.5% of held-out predictions.
+            The model is least accurate for top-tier Island properties where key features (floor area,
+            waterfront position, finishing grade) are not consistently published on listing sites.
         </div>
         """, unsafe_allow_html=True)
