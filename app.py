@@ -91,6 +91,7 @@ def render_background(tier_key):
     .tier-midrange  {{ background: #2e2a14; color: #f0c040; border: 1px solid #5e521a; }}
     .tier-premium   {{ background: #2a1e14; color: #f09060; border: 1px solid #5e3a20; }}
     .tier-luxury    {{ background: #1e1430; color: #b090f0; border: 1px solid #3a2060; }}
+    .tier-elite     {{ background: #2e1430; color: #e090d0; border: 1px solid #5e2060; }}
 
     .location-pill {{
         display: inline-block;
@@ -298,17 +299,19 @@ BEDROOM_LABELS = {
 BEDROOM_REVERSE = {v: k for k, v in BEDROOM_LABELS.items()}
 
 PRICE_TIERS = {
-    'Budget':    (0,        700_000),
-    'Mid-range': (700_000,  2_500_000),
+    'Budget':    (0,         700_000),
+    'Mid-range': (700_000,   2_500_000),
     'Premium':   (2_500_000, 7_000_000),
-    'Luxury':    (7_000_000, float('inf')),
+    'High-end':  (7_000_000, 20_000_000),
+    'Elite':     (20_000_000, float('inf')),
 }
 
 TIER_CSS = {
     'Budget':    'tier-budget',
     'Mid-range': 'tier-midrange',
     'Premium':   'tier-premium',
-    'Luxury':    'tier-luxury',
+    'High-end':  'tier-luxury',
+    'Elite':     'tier-elite',
 }
 
 PLAIN_LABELS = {
@@ -835,7 +838,8 @@ with tab_map:
         )
 
         deck = pdk.Deck(
-            map_style='mapbox://styles/mapbox/dark-v10',
+            map_provider='carto',
+            map_style='dark',
             initial_view_state=view_state,
             layers=[pin_layer],
             tooltip={"text": "{name}"},
@@ -1093,31 +1097,33 @@ with tab3:
                     st.markdown(f"<div class='submit-error'>Could not submit: {str(e)[:100]}</div>", unsafe_allow_html=True)
 
 
-# How does this work expander
-with st.expander("How does this work?"):
+# Footer with tiny how-it-works link
+st.markdown("<br><hr>", unsafe_allow_html=True)
+
+footer_col1, footer_col2 = st.columns([4, 1])
+
+with footer_col1:
     st.markdown("""
-    <div style='color:#bbb; font-size:0.88rem; line-height:1.7; padding:6px 4px;'>
-        RentIQ Nigeria is a stacked machine learning ensemble trained on around 11,000 Lagos rental listings scraped from
-        NigeriaPropertyCentre and PropertyPro over 2025-2026. The model combines XGBoost, LightGBM, and CatBoost predictions,
-        with a Ridge regression on top that learns how to weight each base model. Confidence intervals come from quantile regression.
-        <br><br>
-        The 33 areas you see in the dropdown are filtered for data quality: each one has at least 10 listings in the training set,
-        which keeps the median rent calculation reliable. Electricity bands are based on NERC's official feeder classifications,
-        sourced from six separate documents including EKEDC's March 2024 Energy Cap PDF and the July 2025 supplementary orders.
-        <br><br>
-        Overall test R² is 0.91 with an 80% confidence interval that covers 79.5% of held-out predictions, so the uncertainty
-        estimates are well-calibrated. The model is least accurate for ultra-luxury Island-tier properties because the features
-        that drive price variance there (waterfront position, floor area, finishing grade) are not consistently published on
-        listing sites.
-    </div>
+    <p style='font-size:0.72rem; color:#444; font-family:Space Mono; line-height:1.6;'>
+    Built as part of Victory Ezeala's MSc Data Science dissertation at Pan-Atlantic University.
+    The model was trained on roughly 11,000 Lagos rental listings. These are estimates, not appraisals.
+    </p>
     """, unsafe_allow_html=True)
 
-
-# Footer
-st.markdown("<br><hr>", unsafe_allow_html=True)
-st.markdown("""
-<p style='font-size:0.72rem; color:#444; font-family:Space Mono; line-height:1.6;'>
-Built as part of Victory Ezeala's MSc Data Science dissertation at Pan-Atlantic University.
-The model was trained on roughly 11,000 Lagos rental listings. These are estimates, not appraisals.
-</p>
-""", unsafe_allow_html=True)
+with footer_col2:
+    with st.popover("How it works", use_container_width=True):
+        st.markdown("""
+        <div style='color:#bbb; font-size:0.85rem; line-height:1.65; padding:4px;'>
+            RentIQ Nigeria is a stacked machine learning ensemble trained on around 11,000 Lagos rental listings scraped from
+            NigeriaPropertyCentre and PropertyPro over 2025-2026. The model combines XGBoost, LightGBM, and CatBoost predictions,
+            with a Ridge regression on top that learns how to weight each base model. Confidence intervals come from quantile regression.
+            <br><br>
+            The 33 areas in the dropdown are filtered for data quality: each one has at least 10 listings in the training set,
+            which keeps the median rent calculation reliable. Electricity bands are based on NERC's official feeder classifications,
+            sourced from six separate documents including EKEDC's March 2024 Energy Cap PDF and the July 2025 supplementary orders.
+            <br><br>
+            Overall test R² is 0.91 with an 80% confidence interval that covers 79.5% of held-out predictions, so uncertainty
+            estimates are well-calibrated. The model is least accurate for top-tier properties because the features driving
+            variance there (waterfront position, floor area, finishing grade) are not consistently published on listing sites.
+        </div>
+        """, unsafe_allow_html=True)
