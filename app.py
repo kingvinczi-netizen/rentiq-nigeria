@@ -5,6 +5,7 @@ import pickle
 import os
 import datetime
 import matplotlib.pyplot as plt
+import pydeck as pdk
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -16,7 +17,6 @@ st.set_page_config(
 )
 
 
-# Verified Lagos background images (Unsplash, free-use, no attribution)
 TIER_BACKGROUNDS = {
     'island':           'https://images.unsplash.com/photo-1744907895363-d351aa6019ef?w=1920&q=80',
     'gra':              'https://images.unsplash.com/photo-1618828665011-0abd973f7bb8?w=1920&q=80',
@@ -216,6 +216,66 @@ def render_background(tier_key):
         font-size: 0.9rem;
         margin-top: 12px;
     }}
+
+    .summary-box {{
+        background: rgba(25, 25, 25, 0.85);
+        border-radius: 8px;
+        padding: 14px 18px;
+        margin-top: 16px;
+        font-family: 'Space Mono', monospace;
+        font-size: 0.85rem;
+        color: #ccc;
+        border: 1px solid rgba(60, 60, 60, 0.5);
+        word-wrap: break-word;
+    }}
+
+    .summary-box .copyable {{
+        color: #c8f564;
+        user-select: all;
+        cursor: text;
+    }}
+
+    .whatif-card {{
+        background: rgba(18, 18, 18, 0.82);
+        border-radius: 8px;
+        padding: 18px 22px;
+        margin-top: 14px;
+        border: 1px solid rgba(60, 60, 60, 0.4);
+    }}
+
+    .whatif-delta-up {{
+        color: #f09060;
+        font-family: 'Space Mono', monospace;
+        font-size: 0.95rem;
+        font-weight: 700;
+    }}
+
+    .whatif-delta-down {{
+        color: #6fcf6f;
+        font-family: 'Space Mono', monospace;
+        font-size: 0.95rem;
+        font-weight: 700;
+    }}
+
+    .whatif-delta-zero {{
+        color: #888;
+        font-family: 'Space Mono', monospace;
+        font-size: 0.95rem;
+    }}
+
+    div[data-testid="stExpander"] {{
+        background: rgba(20, 20, 20, 0.65);
+        border: 1px solid rgba(60, 60, 60, 0.4);
+        border-radius: 6px;
+        margin-top: 16px;
+    }}
+
+    div[data-testid="stExpander"] summary {{
+        font-family: 'Space Mono', monospace;
+        font-size: 0.78rem;
+        color: #aaa;
+        letter-spacing: 1px;
+    }}
     </style>
     """, unsafe_allow_html=True)
 
@@ -235,6 +295,8 @@ BEDROOM_LABELS = {
     '4+ Bedrooms': 5,
 }
 
+BEDROOM_REVERSE = {v: k for k, v in BEDROOM_LABELS.items()}
+
 PRICE_TIERS = {
     'Budget':    (0,        700_000),
     'Mid-range': (700_000,  2_500_000),
@@ -249,7 +311,6 @@ TIER_CSS = {
     'Luxury':    'tier-luxury',
 }
 
-# Plain-English SHAP labels mapped from actual feature names
 PLAIN_LABELS = {
     'neighbourhood_median_rent': 'What rent normally looks like in this area',
     'area_median_rent':          'Local average rent',
@@ -316,24 +377,19 @@ def load_shap():
 
 @st.cache_resource(show_spinner=False)
 def get_gsheet_client():
-    """Connect to Google Sheets. Returns the worksheet or None if credentials missing."""
     scopes = [
         'https://www.googleapis.com/auth/spreadsheets',
         'https://www.googleapis.com/auth/drive'
     ]
-
-    # Try Streamlit secrets first (production)
     try:
         creds_dict = dict(st.secrets["gcp_service_account"])
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     except (KeyError, FileNotFoundError):
-        # Fall back to local key file (Colab/dev)
         key_path = '/content/drive/MyDrive/RentIQ Nigeria/rentiq_sheets_key.json'
         if os.path.exists(key_path):
             creds = Credentials.from_service_account_file(key_path, scopes=scopes)
         else:
             return None
-
     try:
         gc = gspread.authorize(creds)
         sh = gc.open("RentIQ Ground Truth")
@@ -343,7 +399,6 @@ def get_gsheet_client():
 
 
 def get_submission_count():
-    """Count rows in the Google Sheet (excluding header)."""
     try:
         ws = get_gsheet_client()
         if ws is None:
@@ -373,6 +428,16 @@ def predict_rent(ensemble, p10_model, p90_model, features_dict):
     return point, p10, p90
 
 
+def predict_point_only(ensemble, features_dict):
+    """Faster single-point prediction for what-if scenarios."""
+    X = pd.DataFrame([features_dict], columns=FEATURES_V2)
+    xgb_pred = ensemble['xgb'].predict(X)[0]
+    lgb_pred = ensemble['lgb'].predict(X)[0]
+    cat_pred = ensemble['cat'].predict(X)[0]
+    stack_in = np.array([[xgb_pred, lgb_pred, cat_pred]])
+    return float(np.expm1(ensemble['meta'].predict(stack_in)[0]))
+
+
 def format_naira(amount):
     if amount >= 1_000_000:
         return f"₦{amount/1_000_000:.1f}m"
@@ -382,7 +447,6 @@ def format_naira(amount):
 
 
 def format_with_commas(num_str):
-    """Take a raw digit string and return it formatted with commas."""
     digits = ''.join(c for c in num_str if c.isdigit())
     if not digits:
         return ''
@@ -390,7 +454,6 @@ def format_with_commas(num_str):
 
 
 def parse_naira_input(formatted_str):
-    """Parse a comma-formatted string back to an integer."""
     digits = ''.join(c for c in formatted_str if c.isdigit())
     return int(digits) if digits else 0
 
@@ -409,7 +472,6 @@ def electricity_label(hours):
 
 
 def auto_bathrooms(bedrooms_encoded):
-    """Sensible default for bathrooms based on bedroom count."""
     mapping = {0: 1, 1: 1, 2: 1, 3: 2, 4: 3, 5: 4}
     return mapping.get(bedrooms_encoded, 2)
 
@@ -431,13 +493,15 @@ defaults = {
     'last_features': None,
     'last_prop_type': None,
     'last_bedrooms_label': None,
+    'last_bathrooms': None,
+    'last_lat': None,
+    'last_lng': None,
 }
 for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
 
-# Load everything
 try:
     ensemble, p10_model, p90_model = load_models()
     lookup = load_lookup()
@@ -451,7 +515,6 @@ except Exception as e:
     lookup = pd.DataFrame()
 
 
-# Build display name → key map directly from lookup
 if not lookup.empty:
     DISPLAY_TO_KEY = {
         area_key.replace('-', ' ').title(): area_key
@@ -463,7 +526,6 @@ else:
     AREA_OPTIONS = []
 
 
-# Apply tier background
 render_background(st.session_state.current_tier_key)
 
 
@@ -570,6 +632,8 @@ if predict_clicked:
     st.session_state.last_prop_type = prop_type
     st.session_state.last_bedrooms_label = bedroom_label
     st.session_state.last_bathrooms = int(bathrooms)
+    st.session_state.last_lat = float(row['latitude'])
+    st.session_state.last_lng = float(row['longitude'])
 
 
 if not st.session_state.prediction_done:
@@ -606,12 +670,26 @@ with col_result:
     </div>
     """, unsafe_allow_html=True)
 
+    # Copyable summary line
+    bedroom_text = st.session_state.last_bedrooms_label.lower()
+    prop_text = "flat" if "Flat" in st.session_state.last_prop_type else "house"
+    elec_text = electricity_label(st.session_state.elec_hours)
+    summary_text = f"{bedroom_text} {prop_text} in {st.session_state.area_display}, {elec_text} power — estimated {format_naira(predicted)} (range {format_naira(p10_safe)} to {format_naira(p90_safe)})"
+
+    st.markdown(f"""
+    <div class='summary-box'>
+        <div style='font-size:0.65rem; color:#555; letter-spacing:1px; margin-bottom:8px;'>SHAREABLE SUMMARY (tap to select all)</div>
+        <span class='copyable'>{summary_text}</span>
+    </div>
+    """, unsafe_allow_html=True)
+
     st.markdown("""
     <div class='warning-box'>
         Listings on the major Nigerian property sites usually show asking prices.
         Real Lagos rents come in 10 to 20 percent lower after negotiation, so adjust the number above accordingly.
     </div>
     """, unsafe_allow_html=True)
+
 
 with col_fair:
     st.markdown("<div class='section-label'>Is this rent fair?</div>", unsafe_allow_html=True)
@@ -664,12 +742,17 @@ with col_fair:
 st.markdown("<br>", unsafe_allow_html=True)
 
 
-# Tabs
-tab1, tab2, tab3 = st.tabs(["What's pushing this price", "Similar listings", "Submit your real rent"])
+# Tabs - now with map and what-if added
+tab1, tab_map, tab_whatif, tab2, tab3 = st.tabs([
+    "What's pushing this price",
+    "Map",
+    "What if...",
+    "Similar listings",
+    "Submit your real rent"
+])
 
 with tab1:
     if shap_df is not None:
-        # Use the actual top features in ranked order, collapsing tier-family
         seen_groups = set()
         rows_to_show = []
         sorted_shap = shap_df.sort_values('mean_abs_shap', ascending=False)
@@ -724,6 +807,140 @@ with tab1:
         """, unsafe_allow_html=True)
     else:
         st.info("SHAP importance file not found.")
+
+
+with tab_map:
+    if st.session_state.last_lat and st.session_state.last_lng:
+        map_df = pd.DataFrame({
+            'lat': [st.session_state.last_lat],
+            'lon': [st.session_state.last_lng],
+            'name': [st.session_state.area_display],
+        })
+
+        # Use pydeck for a nicer dark themed map with a visible pin
+        view_state = pdk.ViewState(
+            latitude=st.session_state.last_lat,
+            longitude=st.session_state.last_lng,
+            zoom=12,
+            pitch=0,
+        )
+
+        pin_layer = pdk.Layer(
+            'ScatterplotLayer',
+            data=map_df,
+            get_position='[lon, lat]',
+            get_color='[200, 245, 100, 220]',
+            get_radius=300,
+            pickable=True,
+        )
+
+        deck = pdk.Deck(
+            map_style='mapbox://styles/mapbox/dark-v10',
+            initial_view_state=view_state,
+            layers=[pin_layer],
+            tooltip={"text": "{name}"},
+        )
+
+        st.pydeck_chart(deck, use_container_width=True)
+
+        st.markdown(f"""
+        <p style='font-size:0.78rem; color:#666; margin-top:8px;'>
+        Showing {st.session_state.area_display} at approximately ({st.session_state.last_lat:.4f}, {st.session_state.last_lng:.4f}).
+        Coordinates derived from OpenStreetMap Nominatim during the Phase 3 geocoding pipeline.
+        </p>
+        """, unsafe_allow_html=True)
+    else:
+        st.info("Map coordinates not available for this area.")
+
+
+with tab_whatif:
+    st.markdown("<div class='section-label'>See how changes affect the price</div>", unsafe_allow_html=True)
+
+    st.markdown("""
+    <p style='color:#aaa; font-size:0.85rem; line-height:1.6; margin-bottom:8px;'>
+    Adjust any of these to see how the estimate changes. The original prediction stays as your baseline.
+    </p>
+    """, unsafe_allow_html=True)
+
+    wi_col1, wi_col2 = st.columns(2)
+
+    base_features = st.session_state.last_features.copy()
+
+    with wi_col1:
+        wi_bedrooms_label = st.selectbox(
+            "What if bedrooms were...",
+            list(BEDROOM_LABELS.keys()),
+            index=list(BEDROOM_LABELS.values()).index(st.session_state.bedrooms_encoded),
+            key="wi_bedrooms"
+        )
+        wi_bedrooms = BEDROOM_LABELS[wi_bedrooms_label]
+
+        wi_bathrooms = st.number_input(
+            "What if bathrooms were...",
+            min_value=1, max_value=8,
+            value=st.session_state.last_bathrooms,
+            key="wi_bathrooms"
+        )
+
+    with wi_col2:
+        wi_elec = st.slider(
+            "What if electricity was...",
+            min_value=0, max_value=24,
+            value=st.session_state.elec_hours,
+            key="wi_elec"
+        )
+        st.caption(electricity_label(wi_elec))
+
+        wi_prop_type = st.radio(
+            "What if it was a...",
+            ["Flat / Apartment", "House / Duplex"],
+            index=0 if st.session_state.last_prop_type == "Flat / Apartment" else 1,
+            horizontal=True,
+            key="wi_prop_type"
+        )
+        wi_type_house = 1 if "House" in wi_prop_type else 0
+
+    # Build modified features
+    wi_features = base_features.copy()
+    wi_features['bedrooms_encoded'] = wi_bedrooms
+    wi_features['bathrooms'] = int(wi_bathrooms)
+    wi_features['type_house'] = wi_type_house
+    wi_features['electricity_hours'] = float(wi_elec)
+
+    # Only re-predict if something actually changed
+    changed = (
+        wi_bedrooms != st.session_state.bedrooms_encoded or
+        wi_bathrooms != st.session_state.last_bathrooms or
+        wi_type_house != base_features['type_house'] or
+        wi_elec != st.session_state.elec_hours
+    )
+
+    wi_predicted = predict_point_only(ensemble, wi_features)
+    delta = wi_predicted - predicted
+    delta_pct = (delta / predicted) * 100 if predicted else 0
+
+    if abs(delta) < predicted * 0.005:
+        delta_class = "whatif-delta-zero"
+        delta_text = "No meaningful change"
+    elif delta > 0:
+        delta_class = "whatif-delta-up"
+        delta_text = f"↑ {format_naira(delta)} higher ({delta_pct:+.1f}%)"
+    else:
+        delta_class = "whatif-delta-down"
+        delta_text = f"↓ {format_naira(abs(delta))} lower ({delta_pct:+.1f}%)"
+
+    st.markdown(f"""
+    <div class='whatif-card'>
+        <div style='font-size:0.65rem; color:#555; letter-spacing:1px; margin-bottom:8px;'>WHAT-IF ESTIMATE</div>
+        <div style='font-family:Space Mono, monospace; font-size:1.8rem; color:#c8f564; font-weight:700;'>
+            {format_naira(wi_predicted)}
+        </div>
+        <div class='{delta_class}' style='margin-top:6px;'>{delta_text}</div>
+        <div style='color:#555; font-size:0.78rem; margin-top:10px;'>
+            Original estimate: {format_naira(predicted)}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 with tab2:
@@ -844,7 +1061,6 @@ with tab3:
         if form_submit:
             submit_rent_value = parse_naira_input(submit_rent_str)
 
-            # Validation
             if submit_rent_value < 100_000:
                 st.markdown("<div class='submit-error'>Rent below ₦100,000 looks like a typo. Please check and try again.</div>", unsafe_allow_html=True)
             elif submit_rent_value > 300_000_000:
@@ -870,11 +1086,31 @@ with tab3:
                             submit_note,
                         ])
                         st.session_state.submitted_areas.add(submit_area)
-                        # Bust the count cache
-                        get_submission_count.clear() if hasattr(get_submission_count, 'clear') else None
+                        if hasattr(get_submission_count, 'clear'):
+                            get_submission_count.clear()
                         st.markdown(f"<div class='submit-success'>Submitted. Thank you for contributing real rent data from {submit_area}.</div>", unsafe_allow_html=True)
                 except Exception as e:
                     st.markdown(f"<div class='submit-error'>Could not submit: {str(e)[:100]}</div>", unsafe_allow_html=True)
+
+
+# How does this work expander
+with st.expander("How does this work?"):
+    st.markdown("""
+    <div style='color:#bbb; font-size:0.88rem; line-height:1.7; padding:6px 4px;'>
+        RentIQ Nigeria is a stacked machine learning ensemble trained on around 11,000 Lagos rental listings scraped from
+        NigeriaPropertyCentre and PropertyPro over 2025-2026. The model combines XGBoost, LightGBM, and CatBoost predictions,
+        with a Ridge regression on top that learns how to weight each base model. Confidence intervals come from quantile regression.
+        <br><br>
+        The 33 areas you see in the dropdown are filtered for data quality: each one has at least 10 listings in the training set,
+        which keeps the median rent calculation reliable. Electricity bands are based on NERC's official feeder classifications,
+        sourced from six separate documents including EKEDC's March 2024 Energy Cap PDF and the July 2025 supplementary orders.
+        <br><br>
+        Overall test R² is 0.91 with an 80% confidence interval that covers 79.5% of held-out predictions, so the uncertainty
+        estimates are well-calibrated. The model is least accurate for ultra-luxury Island-tier properties because the features
+        that drive price variance there (waterfront position, floor area, finishing grade) are not consistently published on
+        listing sites.
+    </div>
+    """, unsafe_allow_html=True)
 
 
 # Footer
