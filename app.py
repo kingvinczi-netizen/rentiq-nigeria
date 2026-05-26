@@ -719,17 +719,16 @@ with col_result:
         pct_str = f"+{(m-1)*100:.0f}%" if m > 1.0 else f"{(m-1)*100:.0f}%"
         alias_note_html = f"<div style='font-size:0.72rem; color:#666; font-family:Space Mono; margin-bottom:8px;'>Based on {parent_name} model ({pct_str} area adjustment)</div>"
 
-    st.markdown(f"""
-    <div class='metric-card'>
-        {alias_note_html}
-        <div class='rent-display'>{format_naira(predicted)}</div>
-        <div class='rent-range'>Range: {format_naira(p10_safe)} to {format_naira(p90_safe)} &nbsp; <span style='font-size:0.7rem; color:#444;'>(80% confidence)</span></div>
-        <div>
-            <span class='tier-badge {TIER_CSS[price_tier]}'>{price_tier}</span>
-            <span class='location-pill'>{st.session_state.location_tier_display}</span>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    _rent_html = f"""<div class='metric-card'>
+{alias_note_html}
+<div class='rent-display'>{format_naira(predicted)}</div>
+<div class='rent-range'>Range: {format_naira(p10_safe)} to {format_naira(p90_safe)} &nbsp; <span style='font-size:0.7rem; color:#444;'>(80% confidence)</span></div>
+<div>
+<span class='tier-badge {TIER_CSS[price_tier]}'>{price_tier}</span>
+<span class='location-pill'>{st.session_state.location_tier_display}</span>
+</div>
+</div>"""
+    st.markdown(_rent_html, unsafe_allow_html=True)
 
     # Copyable summary
     bedroom_text = st.session_state.last_bedrooms_label.lower()
