@@ -17,6 +17,80 @@ st.set_page_config(
 )
 
 
+# Force dark theme so light-mode users see the app correctly
+st.markdown("""
+<style>
+/* force dark theme regardless of system setting */
+[data-testid="stAppViewContainer"], .stApp {
+    background-color: #0a0a0a !important;
+    color: #f0ede6 !important;
+}
+section[data-testid="stSidebar"] {
+    background-color: rgba(15,15,15,0.98) !important;
+    border-right: 1px solid #2a2a2a !important;
+}
+section[data-testid="stSidebar"] * { color: #f0ede6 !important; }
+section[data-testid="stSidebar"] input,
+section[data-testid="stSidebar"] [data-baseweb="select"] > div {
+    background-color: #1a1a1a !important; color: #f0ede6 !important; border-color: #333 !important;
+}
+[data-testid="stAppViewContainer"] * { color: #f0ede6; }
+[data-testid="stTabs"] button[role="tab"] { color: #aaa !important; background: transparent !important; }
+[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+    color: #c8f564 !important; border-bottom: 2px solid #c8f564 !important;
+}
+[data-testid="stDataFrame"] > div { background-color: #111 !important; color: #f0ede6 !important; }
+input[type="number"], input[type="text"] {
+    background-color: #1a1a1a !important; color: #f0ede6 !important; border-color: #333 !important;
+}
+[data-baseweb="select"] > div { background-color: #1a1a1a !important; color: #f0ede6 !important; }
+[data-testid="stRadio"] label, [data-testid="stSlider"] label { color: #f0ede6 !important; }
+[data-testid="stCaptionContainer"] p { color: #888 !important; }
+[data-testid="stFormSubmitButton"] button {
+    background: #c8f564 !important; color: #0d0d0d !important; font-weight: 700 !important; border: none !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
+
+# Force dark theme so light-mode users see the app correctly
+st.markdown("""
+<style>
+/* force dark theme regardless of system setting */
+[data-testid="stAppViewContainer"], .stApp {
+    background-color: #0a0a0a !important;
+    color: #f0ede6 !important;
+}
+section[data-testid="stSidebar"] {
+    background-color: rgba(15,15,15,0.98) !important;
+    border-right: 1px solid #2a2a2a !important;
+}
+section[data-testid="stSidebar"] * { color: #f0ede6 !important; }
+section[data-testid="stSidebar"] input,
+section[data-testid="stSidebar"] [data-baseweb="select"] > div {
+    background-color: #1a1a1a !important; color: #f0ede6 !important; border-color: #333 !important;
+}
+[data-testid="stAppViewContainer"] * { color: #f0ede6; }
+[data-testid="stTabs"] button[role="tab"] { color: #aaa !important; background: transparent !important; }
+[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+    color: #c8f564 !important; border-bottom: 2px solid #c8f564 !important;
+}
+[data-testid="stDataFrame"] > div { background-color: #111 !important; color: #f0ede6 !important; }
+input[type="number"], input[type="text"] {
+    background-color: #1a1a1a !important; color: #f0ede6 !important; border-color: #333 !important;
+}
+[data-baseweb="select"] > div { background-color: #1a1a1a !important; color: #f0ede6 !important; }
+[data-testid="stRadio"] label, [data-testid="stSlider"] label { color: #f0ede6 !important; }
+[data-testid="stCaptionContainer"] p { color: #888 !important; }
+[data-testid="stFormSubmitButton"] button {
+    background: #c8f564 !important; color: #0d0d0d !important; font-weight: 700 !important; border: none !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
+
 TIER_BACKGROUNDS = {
     'island':           'https://images.unsplash.com/photo-1744907895363-d351aa6019ef?w=1920&q=80',
     'gra':              'https://images.unsplash.com/photo-1618828665011-0abd973f7bb8?w=1920&q=80',
