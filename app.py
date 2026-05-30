@@ -521,6 +521,37 @@ def predict_point_only(ensemble, features_dict):
     return float(np.expm1(ensemble['meta'].predict(stack_in)[0]))
 
 
+def predict_for_area(ensemble, lookup, search_options, area_display,
+                     bedrooms_encoded, bathrooms, type_house, elec_hours):
+    """Predict annual rent for any searchable area using the given property
+    inputs. Returns (predicted_naira, location_tier) or (None, None) if the
+    area can't be resolved. Used by the Compare areas tab."""
+    info = search_options.get(area_display, {})
+    key = info.get('key', '')
+    mult = info.get('multiplier', 1.0)
+    row = lookup[lookup['area_scraped'] == key]
+    if row.empty:
+        return None, None
+    row = row.iloc[0]
+    feats = {
+        'bedrooms_encoded':          bedrooms_encoded,
+        'bathrooms':                 int(bathrooms),
+        'type_house':                type_house,
+        'tier_encoded':              float(row['tier_encoded']),
+        'neighbourhood_median_rent': float(row['neighbourhood_median_rent']),
+        'area_median_rent':          float(row['area_median_rent']),
+        'tier_median_rent':          float(row['tier_median_rent']),
+        'electricity_hours':         float(elec_hours),
+        'latitude':                  float(row['latitude']),
+        'longitude':                 float(row['longitude']),
+        'dist_to_vi_km':             float(row['dist_to_vi_km']),
+        'dist_to_ikeja_km':          float(row['dist_to_ikeja_km']),
+        'tier_target_enc':           float(row['tier_target_enc']),
+    }
+    pred = predict_point_only(ensemble, feats) * mult
+    return pred, str(row['location_tier']).replace('-', ' ').title()
+
+
 def format_naira(amount):
     if amount >= 1_000_000:
         return f"₦{amount/1_000_000:.1f}m"
@@ -919,10 +950,11 @@ st.markdown("<br>", unsafe_allow_html=True)
 
 
 # Tabs
-tab1, tab_map, tab_whatif, tab2, tab3 = st.tabs([
+tab1, tab_map, tab_whatif, tab_compare, tab2, tab3 = st.tabs([
     "What's pushing this price",
     "Map",
     "What if...",
+    "Compare areas",
     "Similar listings",
     "Submit your real rent"
 ])
@@ -1111,11 +1143,110 @@ with tab_whatif:
     </div>
     """, unsafe_allow_html=True)
 
+    # Electricity premium: re-run the prediction at the best and worst NERC
+    # bands, holding everything else fixed, to isolate what power supply alone
+    # is worth for this property. This makes the project's headline feature
+    # (electricity as a rent driver) a concrete number.
+    st.markdown("<div class='section-label' style='margin-top:26px;'>What electricity is worth here</div>", unsafe_allow_html=True)
+
+    elec_low = base_features.copy()
+    elec_low['electricity_hours'] = 4.0          # Band E
+    elec_high = base_features.copy()
+    elec_high['electricity_hours'] = 20.0        # Band A
+
+    pred_low = predict_point_only(ensemble, elec_low) * st.session_state.last_multiplier
+    pred_high = predict_point_only(ensemble, elec_high) * st.session_state.last_multiplier
+    premium = pred_high - pred_low
+
+    st.markdown(f"""
+    <div class='whatif-card'>
+        <div style='color:#aaa; font-size:0.85rem; line-height:1.6; margin-bottom:10px;'>
+            Holding bedrooms, bathrooms and everything else fixed, moving this
+            property from the worst power band (Band E, ~4hrs) to the best
+            (Band A, 20hrs+) changes the predicted rent by:
+        </div>
+        <div style='font-family:Space Mono, monospace; font-size:1.6rem; color:#c8f564; font-weight:700;'>
+            {format_naira(premium)} / year
+        </div>
+        <div style='color:#555; font-size:0.78rem; margin-top:8px;'>
+            Band E estimate: {format_naira(pred_low)} &nbsp;·&nbsp; Band A estimate: {format_naira(pred_high)}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+with tab_compare:
+    st.markdown("<div class='section-label'>Compare two areas side by side</div>", unsafe_allow_html=True)
+    st.markdown("""
+    <p style='color:#aaa; font-size:0.85rem; line-height:1.6; margin-bottom:12px;'>
+    Same property, two locations. Useful if you're deciding between neighbourhoods.
+    Uses the bedroom, bathroom, property type and electricity from your current prediction.
+    </p>
+    """, unsafe_allow_html=True)
+
+    other_options = [a for a in ALL_AREA_NAMES if a != st.session_state.area_display]
+    if other_options:
+        default_idx = 0
+        compare_area = st.selectbox(
+            "Compare against",
+            other_options,
+            index=default_idx,
+            key="compare_area"
+        )
+
+        # Predict for the second area using the same property inputs the
+        # current prediction was built on.
+        cmp_pred, cmp_tier = predict_for_area(
+            ensemble, lookup, SEARCH_OPTIONS, compare_area,
+            st.session_state.bedrooms_encoded,
+            st.session_state.last_bathrooms,
+            1 if "House" in st.session_state.last_prop_type else 0,
+            st.session_state.elec_hours,
+        )
+
+        if cmp_pred is None:
+            st.info(f"Couldn't generate a comparison for {compare_area}.")
+        else:
+            gap = predicted - cmp_pred
+            cheaper = compare_area if cmp_pred < predicted else st.session_state.area_display
+            gap_abs = abs(gap)
+            gap_pct = (gap_abs / max(predicted, cmp_pred)) * 100 if max(predicted, cmp_pred) else 0
+
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown(f"""
+                <div class='whatif-card'>
+                    <div style='font-size:0.7rem; color:#888; letter-spacing:1px; margin-bottom:6px;'>{st.session_state.area_display.upper()}</div>
+                    <div style='font-family:Space Mono, monospace; font-size:1.7rem; color:#c8f564; font-weight:700;'>
+                        {format_naira(predicted)}
+                    </div>
+                    <div style='color:#666; font-size:0.74rem; margin-top:6px;'>{st.session_state.location_tier_display}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with c2:
+                st.markdown(f"""
+                <div class='whatif-card'>
+                    <div style='font-size:0.7rem; color:#888; letter-spacing:1px; margin-bottom:6px;'>{compare_area.upper()}</div>
+                    <div style='font-family:Space Mono, monospace; font-size:1.7rem; color:#c8f564; font-weight:700;'>
+                        {format_naira(cmp_pred)}
+                    </div>
+                    <div style='color:#666; font-size:0.74rem; margin-top:6px;'>{cmp_tier}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            st.markdown(f"""
+            <div class='driver-explain' style='margin-top:14px;'>
+                <strong>{cheaper}</strong> is the cheaper of the two, by about
+                {format_naira(gap_abs)} a year ({gap_pct:.0f}%), for the same property setup.
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.info("No other areas available to compare against.")
+
 
 with tab2:
     if master is not None:
         bed_col = 'bedrooms_encoded' if 'bedrooms_encoded' in master.columns else 'bedrooms_enc'
-
         comps = master[
             (master['area_scraped'] == st.session_state.area_key) &
             (master[bed_col] == st.session_state.bedrooms_encoded)
