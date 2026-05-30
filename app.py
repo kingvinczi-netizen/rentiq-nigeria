@@ -53,44 +53,6 @@ input[type="number"], input[type="text"] {
 """, unsafe_allow_html=True)
 
 
-
-# Force dark theme so light-mode users see the app correctly
-st.markdown("""
-<style>
-/* force dark theme regardless of system setting */
-[data-testid="stAppViewContainer"], .stApp {
-    background-color: #0a0a0a !important;
-    color: #f0ede6 !important;
-}
-section[data-testid="stSidebar"] {
-    background-color: rgba(15,15,15,0.98) !important;
-    border-right: 1px solid #2a2a2a !important;
-}
-section[data-testid="stSidebar"] * { color: #f0ede6 !important; }
-section[data-testid="stSidebar"] input,
-section[data-testid="stSidebar"] [data-baseweb="select"] > div {
-    background-color: #1a1a1a !important; color: #f0ede6 !important; border-color: #333 !important;
-}
-[data-testid="stAppViewContainer"] * { color: #f0ede6; }
-[data-testid="stTabs"] button[role="tab"] { color: #aaa !important; background: transparent !important; }
-[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
-    color: #c8f564 !important; border-bottom: 2px solid #c8f564 !important;
-}
-[data-testid="stDataFrame"] > div { background-color: #111 !important; color: #f0ede6 !important; }
-input[type="number"], input[type="text"] {
-    background-color: #1a1a1a !important; color: #f0ede6 !important; border-color: #333 !important;
-}
-[data-baseweb="select"] > div { background-color: #1a1a1a !important; color: #f0ede6 !important; }
-[data-testid="stRadio"] label, [data-testid="stSlider"] label { color: #f0ede6 !important; }
-[data-testid="stCaptionContainer"] p { color: #888 !important; }
-[data-testid="stFormSubmitButton"] button {
-    background: #c8f564 !important; color: #0d0d0d !important; font-weight: 700 !important; border: none !important;
-}
-</style>
-""", unsafe_allow_html=True)
-
-
-
 TIER_BACKGROUNDS = {
     'island':           'https://images.unsplash.com/photo-1744907895363-d351aa6019ef?w=1920&q=80',
     'gra':              'https://images.unsplash.com/photo-1618828665011-0abd973f7bb8?w=1920&q=80',
@@ -115,11 +77,11 @@ def render_background(tier_key):
 
     .stApp {{
         background-image:
-            linear-gradient(rgba(10, 10, 10, 0.93), rgba(10, 10, 10, 0.97)),
-            url('{img_url}');
-        background-size: cover;
-        background-position: center;
-        background-attachment: fixed;
+            linear-gradient(rgba(10, 10, 10, 0.78), rgba(10, 10, 10, 0.88)),
+            url('{img_url}') !important;
+        background-size: cover !important;
+        background-position: center !important;
+        background-attachment: fixed !important;
         color: #f0ede6;
     }}
 
@@ -380,6 +342,36 @@ PLAIN_LABELS = {
     'latitude':                  'Location on the Lagos map',
 }
 
+# Placeholder shown in the area dropdown before the user picks a real area
+AREA_PLACEHOLDER = "— Select an area —"
+
+# Default daily electricity hours per area, from NERC band classifications
+# (dissertation Appendix B). Areas not listed fall back to a tier-based default.
+NERC_AREA_HOURS = {
+    'ikoyi': 20, 'victoria-island': 20, 'lekki': 16, 'ajah': 16,
+    'magodo': 20, 'ikeja': 20, 'surulere': 20, 'yaba': 20,
+    'ilupeju': 20, 'gbagada': 20, 'iyana-ipaja': 16, 'ikorodu': 8,
+}
+
+# Fallback by tier when an area is not in the Appendix B table
+NERC_TIER_DEFAULT_HOURS = {
+    'island': 20,
+    'gra': 20,
+    'upscale-mainland': 20,
+    'mainland': 18,
+    'suburb': 14,
+    'outskirt': 10,
+}
+
+
+def default_electricity_hours(area_key, tier_key):
+    """Best-guess starting electricity hours for an area.
+    Uses the exact NERC band where known, otherwise the tier default."""
+    if area_key in NERC_AREA_HOURS:
+        return NERC_AREA_HOURS[area_key], True
+    tier = str(tier_key).lower().strip()
+    return NERC_TIER_DEFAULT_HOURS.get(tier, 16), False
+
 
 def get_artifacts_path():
     drive_path = '/content/drive/MyDrive/RentIQ Nigeria/model/artifacts'
@@ -575,6 +567,7 @@ defaults = {
     'p90': None,
     'price_tier_name': None,
     'location_tier_display': None,
+    'location_tier_raw': None,
     'area_display': None,
     'area_key': None,
     'bedrooms_encoded': None,
@@ -590,6 +583,8 @@ defaults = {
     'last_multiplier': 1.0,
     'is_alias': False,
     'alias_parent': None,
+    'last_area_key': None,
+    'elec_is_exact': False,
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -633,9 +628,11 @@ with st.sidebar:
     if ALL_AREA_NAMES:
         area_display = st.selectbox(
             "Search area",
-            ALL_AREA_NAMES,
+            [AREA_PLACEHOLDER] + ALL_AREA_NAMES,
             help="Type to search — includes estates, GRAs, and sub-areas"
         )
+
+        area_chosen = area_display in SEARCH_OPTIONS
 
         area_info = SEARCH_OPTIONS.get(area_display, {})
         area_key = area_info.get('key', '')
@@ -644,7 +641,7 @@ with st.sidebar:
         tier_hint = area_info.get('tier_hint', 'mainland')
 
         # Show alias note if applicable
-        if is_alias and multiplier != 1.0:
+        if area_chosen and is_alias and multiplier != 1.0:
             parent_display = area_key.replace('-', ' ').title()
             if multiplier > 1.0:
                 pct = f"+{(multiplier-1)*100:.0f}% vs {parent_display}"
@@ -652,21 +649,32 @@ with st.sidebar:
                 pct = f"{(multiplier-1)*100:.0f}% vs {parent_display}"
             st.markdown(f"<p class='alias-note'>{pct}</p>", unsafe_allow_html=True)
 
-        # Update background tier
-        matched = lookup[lookup['area_scraped'] == area_key]
-        if not matched.empty:
-            new_tier = str(matched.iloc[0]['location_tier']).lower().strip()
-        else:
-            new_tier = tier_hint.lower().strip()
+        # Update background tier (only when a real area is chosen)
+        if area_chosen:
+            matched = lookup[lookup['area_scraped'] == area_key]
+            if not matched.empty:
+                new_tier = str(matched.iloc[0]['location_tier']).lower().strip()
+            else:
+                new_tier = tier_hint.lower().strip()
 
-        if new_tier != st.session_state.current_tier_key:
-            st.session_state.current_tier_key = new_tier
-            st.rerun()
+            # When the user switches to a different area, preset the electricity
+            # slider to that area's NERC band default (exact where known, else
+            # tier default). Stored before the slider renders below.
+            if st.session_state.get('last_area_key') != area_key:
+                st.session_state['last_area_key'] = area_key
+                hrs, exact = default_electricity_hours(area_key, new_tier)
+                st.session_state['elec_slider'] = hrs
+                st.session_state['elec_is_exact'] = exact
+
+            if new_tier != st.session_state.current_tier_key:
+                st.session_state.current_tier_key = new_tier
+                st.rerun()
     else:
         area_display = ""
         area_key = ""
         multiplier = 1.0
         is_alias = False
+        area_chosen = False
 
     prop_type = st.radio("Property type", ["Flat / Apartment", "House / Duplex"], horizontal=True)
     type_house = 1 if "House" in prop_type else 0
@@ -677,11 +685,29 @@ with st.sidebar:
     suggested_bathrooms = auto_bathrooms(bedrooms_encoded)
     bathrooms = st.number_input("Bathrooms", min_value=1, max_value=8, value=suggested_bathrooms, step=1)
 
-    elec_hours = st.slider("Hours of electricity per day", min_value=0, max_value=24, value=16, step=1)
+    if 'elec_slider' not in st.session_state:
+        st.session_state['elec_slider'] = 16
+    elec_hours = st.slider(
+        "Hours of electricity per day",
+        min_value=0, max_value=24,
+        step=1,
+        key="elec_slider"
+    )
     st.caption(electricity_label(elec_hours))
+    if area_chosen:
+        if st.session_state.get('elec_is_exact'):
+            st.caption(f"Default set from {area_display}'s NERC band. Adjust if yours differs.")
+        else:
+            st.caption("Estimated default for this area's tier. Adjust if yours differs.")
 
     st.markdown("---")
-    predict_clicked = st.button("Predict rent", use_container_width=True)
+    predict_clicked = st.button(
+        "Predict rent",
+        use_container_width=True,
+        disabled=not area_chosen
+    )
+    if not area_chosen:
+        st.caption("Pick an area to enable prediction")
 
 
 # Header
@@ -748,6 +774,7 @@ if predict_clicked:
     st.session_state.p90 = p90
     st.session_state.price_tier_name = classify_price_tier(predicted)
     st.session_state.location_tier_display = str(row['location_tier']).replace('-', ' ').title()
+    st.session_state.location_tier_raw = str(row['location_tier']).lower().strip()
     st.session_state.area_display = area_display
     st.session_state.area_key = area_key
     st.session_state.bedrooms_encoded = bedrooms_encoded
@@ -823,6 +850,22 @@ with col_result:
         Real Lagos rents come in 10 to 20 percent lower after negotiation, so adjust accordingly.
     </div>
     """, unsafe_allow_html=True)
+
+    # Island tier is the model's weak spot (high-end features not in the data).
+    # Flag it honestly so users know the estimate is less reliable here.
+    if st.session_state.get('location_tier_raw') == 'island':
+        st.markdown("""
+        <div class='warning-box' style='border-color:#5e3a20; color:#f09060;'>
+            Heads up: estimates for ultra-premium Island properties are less reliable.
+            Rents here depend heavily on floor area, finishing, and waterfront position,
+            which aren't captured in the listing data the model learned from.
+        </div>
+        """, unsafe_allow_html=True)
+
+    if st.button("New search", key="reset_btn"):
+        st.session_state.prediction_done = False
+        st.session_state.predicted = None
+        st.rerun()
 
 
 with col_fair:
