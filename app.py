@@ -348,9 +348,18 @@ AREA_PLACEHOLDER = "— Select an area —"
 # Default daily electricity hours per area, from NERC band classifications
 # (dissertation Appendix B). Areas not listed fall back to a tier-based default.
 NERC_AREA_HOURS = {
+    # Direct model areas
     'ikoyi': 20, 'victoria-island': 20, 'lekki': 16, 'ajah': 16,
     'magodo': 20, 'ikeja': 20, 'surulere': 20, 'yaba': 20,
     'ilupeju': 20, 'gbagada': 20, 'iyana-ipaja': 16, 'ikorodu': 8,
+
+    # Alias areas that sit on a different feeder from their parent. Without
+    # these the alias silently inherits the parent's band, which was wrong for
+    # Aboru (Band A) reading off Iyana Ipaja (Band B), and for Egbeda, Ago
+    # Palace, Lekki Phase 1 and Festac in the same way.
+    'aboru': 20, 'egbeda': 20, 'ago-palace': 20,
+    'lekki-phase-1': 20, 'banana-island': 20, 'ikeja-gra': 20,
+    'festac': 12,
 }
 
 # Fallback by tier when an area is not in the Appendix B table
@@ -364,9 +373,16 @@ NERC_TIER_DEFAULT_HOURS = {
 }
 
 
-def default_electricity_hours(area_key, tier_key):
+def default_electricity_hours(area_key, tier_key, alias_key=None):
     """Best-guess starting electricity hours for an area.
-    Uses the exact NERC band where known, otherwise the tier default."""
+
+    Checks the searched name first, because an alias can sit on a different
+    NERC feeder from the parent area it borrows model features from. Aboru is
+    Band A while its parent Iyana Ipaja is Band B, so resolving on the parent
+    alone reported the wrong supply. Falls back to the parent area, then to the
+    tier default."""
+    if alias_key and alias_key in NERC_AREA_HOURS:
+        return NERC_AREA_HOURS[alias_key], True
     if area_key in NERC_AREA_HOURS:
         return NERC_AREA_HOURS[area_key], True
     tier = str(tier_key).lower().strip()
@@ -691,9 +707,13 @@ with st.sidebar:
             # When the user switches to a different area, preset the electricity
             # slider to that area's NERC band default (exact where known, else
             # tier default). Stored before the slider renders below.
-            if st.session_state.get('last_area_key') != area_key:
-                st.session_state['last_area_key'] = area_key
-                hrs, exact = default_electricity_hours(area_key, new_tier)
+            # Tracked on the display name rather than area_key, because two
+            # aliases can share one parent and switching between them has to
+            # re-apply the band.
+            alias_key = area_display.strip().lower().replace(' ', '-') if is_alias else None
+            if st.session_state.get('last_area_key') != area_display:
+                st.session_state['last_area_key'] = area_display
+                hrs, exact = default_electricity_hours(area_key, new_tier, alias_key)
                 st.session_state['elec_slider'] = hrs
                 st.session_state['elec_is_exact'] = exact
 
