@@ -8,7 +8,6 @@ Banana Island Road,ikoyi,1.2,island
 Oniru,lekki,1.15,island
 Lekki Phase 1,lekki,1.25,island
 Lekki Phase 2,lekki,0.85,gra
-Ikate Elegushi,lekki,1.0,gra
 Chevron,lekki,1.05,gra
 VGC,lekki,1.2,island
 Osapa London,lekki,0.95,gra
@@ -34,24 +33,21 @@ Alausa,ikeja,1.0,mainland
 Magodo Phase 1,magodo,0.9,gra
 Magodo Phase 2,magodo,1.1,gra
 Shangisha,magodo,0.95,gra
-Gbagada Phase 1,gbagada,1.1,upscale-mainland
 Gbagada Phase 2,gbagada,1.0,upscale-mainland
 Alaka Estate,surulere,1.15,upscale-mainland
-Aguda,surulere,1.0,upscale-mainland
 Ojuelegba,surulere,0.9,upscale-mainland
 Ilupeju Estate,ilupeju,1.1,upscale-mainland
 Obanikoro,ilupeju,0.95,upscale-mainland
 Pedro,shomolu,0.95,mainland
 Bariga,shomolu,0.9,mainland
-Ojota,ketu,1.0,mainland
 Mile 12,ketu,0.9,mainland
-Festac,amuwo-odofin,1.18,mainland
-Orile,amuwo-odofin,0.9,mainland
-Egbeda,iyana-ipaja,0.95,suburb
-Akowonjo,iyana-ipaja,1.0,suburb
-Idimu,iyana-ipaja,0.9,suburb
-Aboru,iyana-ipaja,1.0,suburb
-Ipaja Road,iyana-ipaja,0.95,suburb
+Festac,amuwo odofin,1.18,mainland
+Orile,amuwo odofin,0.9,mainland
+Egbeda,iyana ipaja,0.95,suburb
+Akowonjo,iyana ipaja,1.0,suburb
+Idimu,iyana ipaja,0.9,suburb
+Aboru,iyana ipaja,1.0,suburb
+Ipaja Road,iyana ipaja,0.95,suburb
 Dopemu,agege,1.0,mainland
 Ikotun,isolo,0.9,mainland
 Igando,isolo,0.85,suburb
@@ -62,19 +58,16 @@ Ibafo,ikorodu,0.78,outskirt
 Berger,ikorodu,0.85,outskirt
 Jakande Estate,ajah,0.9,gra
 Lekki Gardens,lekki,1.0,gra
-Oral Estate,oral-estate,1.0,gra
-Ocean Bay Estate,ocean-bay-estate,1.0,gra
-Pinnock Beach,pinnock-beach-estate,1.0,island
+Pinnock Beach,pinnock beach estate,1.0,island
 Maroko Lekki,lekki,0.85,gra
 Ogudu GRA,ogudu,1.2,gra
 Ojodu Berger,ikorodu,0.85,suburb
-Isheri,isheri-north,1.0,suburb
+Isheri,isheri north,1.0,suburb
 Magodo GRA,magodo,1.05,gra
 Anthony Village,maryland,1.0,upscale-mainland
 Palmgrove,shomolu,1.0,mainland
 Eric Moore,surulere,1.05,upscale-mainland
 Itire,surulere,0.95,upscale-mainland
-Lawanson,lawanson,1.0,mainland
 Okota,isolo,0.95,mainland
 Ago Palace,isolo,0.9,mainland
 Chevron Lekki,lekki,1.0,gra

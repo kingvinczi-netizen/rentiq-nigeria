@@ -424,10 +424,22 @@ def load_model_card():
 CONFORMAL_Q = load_model_card().get('conformal_q', 0.0)
 
 
+def norm_area(series):
+    """Area keys are spelled three different ways across the three files that
+    feed this app: 'iyana-ipaja' in the master and in alias parents, 'iyana
+    ipaja' in the lookup. Every key is matched with ==, so one normaliser at
+    load time is what keeps an alias from resolving to nothing."""
+    return (series.astype(str).str.strip().str.lower()
+            .str.replace('-', ' ', regex=False)
+            .str.replace(r'\s+', ' ', regex=True))
+
+
 @st.cache_data(show_spinner=False)
 def load_lookup():
     path = get_artifacts_path()
-    return pd.read_csv(f'{path}/area_lookup.csv')
+    df = pd.read_csv(f'{path}/area_lookup.csv')
+    df['area_scraped'] = norm_area(df['area_scraped'])
+    return df
 
 
 @st.cache_data(show_spinner=False)
@@ -435,7 +447,9 @@ def load_aliases():
     path = get_artifacts_path()
     alias_path = f'{path}/area_aliases.csv'
     if os.path.exists(alias_path):
-        return pd.read_csv(alias_path)
+        df = pd.read_csv(alias_path)
+        df['parent_area'] = norm_area(df['parent_area'])
+        return df
     return pd.DataFrame(columns=['alias', 'parent_area', 'multiplier', 'tier_hint'])
 
 
@@ -448,7 +462,9 @@ def load_master():
     ]
     for p in candidates:
         if os.path.exists(p):
-            return pd.read_csv(p)
+            df = pd.read_csv(p)
+            df['area_scraped'] = norm_area(df['area_scraped'])
+            return df
     return None
 
 
@@ -496,7 +512,7 @@ def get_submission_count():
 def build_search_options(lookup, aliases):
     """
     Build the full list of searchable options combining:
-    1. The 33 direct model areas (displayed as title case)
+    1. The direct model areas from area_lookup.csv (displayed as title case)
     2. All aliases from area_aliases.csv
     Returns a dict: display_name -> {type, key, multiplier, tier_hint}
     """
@@ -1338,7 +1354,7 @@ with tab2:
             st.markdown(alias_note, unsafe_allow_html=True)
 
             st.dataframe(comp_display, use_container_width=True, hide_index=True)
-            st.markdown("<p style='font-size:0.72rem; color:#555; margin-top:6px;'>Real listings from the project dataset (NigeriaPropertyCentre and PropertyPro, 2025-2026).</p>", unsafe_allow_html=True)
+            st.markdown("<p style='font-size:0.72rem; color:#555; margin-top:6px;'>Real listings from the project dataset, collected May 2026.</p>", unsafe_allow_html=True)
         else:
             st.info(f"No similar listings in the dataset for {st.session_state.area_display}.")
     else:
@@ -1471,10 +1487,10 @@ with footer_col2:
         st.markdown("""
         <div style='color:#bbb; font-size:0.85rem; line-height:1.65; padding:4px;'>
             RentIQ Nigeria is a stacked machine learning ensemble trained on around 11,000 Lagos rental listings scraped from
-            NigeriaPropertyCentre and PropertyPro over 2025-2026. The model combines XGBoost, LightGBM, and CatBoost predictions,
-            with a Ridge regression on top that learns how to weight each base model. Prediction intervals come from quantile regression. They are prediction intervals rather than prediction intervals because they describe uncertainty about a single property, not about a population average.
+            NigeriaPropertyCentre, PropertyPro and PrivateProperty in May 2026. The model combines XGBoost, LightGBM, and CatBoost predictions,
+            with a Ridge regression on top that learns how to weight each base model. Prediction intervals come from quantile regression. They are prediction intervals rather than confidence intervals because they describe uncertainty about a single property, not about a population average.
             <br><br>
-            The 33 core model areas are filtered for data quality — each has at least 10 listings in the training set.
+            The 40 core model areas are filtered for data quality — each has at least 5 listings whose own location text names the area.
             Alias areas (like Banana Island, Lekki Phase 1, Ikeja GRA) use the nearest core area as the model input,
             with a price adjustment multiplier derived from known market relationships.
             Electricity bands are based on NERC's official feeder classifications from six source documents.
