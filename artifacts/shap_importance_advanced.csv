@@ -1,14 +1,14 @@
 feature,mean_abs_shap,label
-tier_median_rent,0.0057033827,Tier median rent
-dist_to_ikeja_km,0.0071994285,Distance to Ikeja (km)
-electricity_hours,0.009594963,Electricity (hrs/day)
-tier_target_enc,0.010877774,Tier (target encoded)
-tier_encoded,0.014325186,Tier (ordinal)
-latitude,0.016450632,Latitude
-longitude,0.019495772,Longitude
-type_house,0.024584167,Property type
-dist_to_vi_km,0.03247349,Distance to VI (km)
-bathrooms,0.074537285,Bathrooms
-area_median_rent,0.15322216,Area median rent
-bedrooms_encoded,0.25158173,Bedroom count
-neighbourhood_median_rent,0.67028403,Neighbourhood median rent
+tier_target_enc,0.014182325452566147,Tier (target encoded)
+electricity_hours,0.01676122099161148,Electricity (hrs/day)
+tier_median_rent,0.017373548820614815,Tier median rent
+dist_to_ikeja_km,0.01848447136580944,Distance to Ikeja (km)
+longitude,0.022135641425848007,Longitude
+tier_encoded,0.026898840442299843,Tier (ordinal)
+type_house,0.04044653847813606,Property type
+latitude,0.0657624751329422,Latitude
+dist_to_vi_km,0.0704483687877655,Distance to VI (km)
+bathrooms,0.15110504627227783,Bathrooms
+area_median_rent,0.16462527215480804,Area median rent
+bedrooms_encoded,0.2042020559310913,Bedroom count
+neighbourhood_median_rent,0.4829632639884949,Neighbourhood median rent
