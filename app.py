@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import json
 import pickle
 import os
 import datetime
@@ -409,6 +410,21 @@ def load_models():
 
 
 @st.cache_data(show_spinner=False)
+def load_model_card():
+    """Metrics and the conformal interval adjustment, written by deploy.py.
+    Falls back to an unadjusted interval if the card is missing."""
+    path = get_artifacts_path()
+    try:
+        with open(f'{path}/model_card.json') as f:
+            return json.load(f)
+    except (FileNotFoundError, ValueError):
+        return {'conformal_q': 0.0}
+
+
+CONFORMAL_Q = load_model_card().get('conformal_q', 0.0)
+
+
+@st.cache_data(show_spinner=False)
 def load_lookup():
     path = get_artifacts_path()
     return pd.read_csv(f'{path}/area_lookup.csv')
@@ -523,8 +539,11 @@ def predict_rent(ensemble, p10_model, p90_model, features_dict):
     cat_pred = ensemble['cat'].predict(X)[0]
     stack_in = np.array([[xgb_pred, lgb_pred, cat_pred]])
     point = float(np.expm1(ensemble['meta'].predict(stack_in)[0]))
-    p10 = float(np.expm1(p10_model.predict(X)[0]))
-    p90 = float(np.expm1(p90_model.predict(X)[0]))
+    # Split-conformal widening. Raw quantile regression covered only 64.2% of
+    # held-out values against an 80% target; widening by CONFORMAL_Q log units
+    # restores 79.5%. Applied in log space, before back-transforming.
+    p10 = float(np.expm1(p10_model.predict(X)[0] - CONFORMAL_Q))
+    p90 = float(np.expm1(p90_model.predict(X)[0] + CONFORMAL_Q))
     return point, p10, p90
 
 
@@ -610,6 +629,7 @@ def auto_bathrooms(bedrooms_encoded):
 defaults = {
     'prediction_done': False,
     'predicted': None,
+    'area_listing_count': None,
     'p10': None,
     'p90': None,
     'price_tier_name': None,
@@ -831,6 +851,10 @@ if predict_clicked:
     st.session_state.bedrooms_encoded = bedrooms_encoded
     st.session_state.elec_hours = elec_hours
     st.session_state.last_features = features_dict
+    try:
+        st.session_state.area_listing_count = int(row['listing_count'])
+    except (KeyError, TypeError, ValueError):
+        st.session_state.area_listing_count = None
     st.session_state.last_prop_type = prop_type
     st.session_state.last_bedrooms_label = bedroom_label
     st.session_state.last_bathrooms = int(bathrooms)
@@ -864,6 +888,16 @@ with col_result:
     p10_safe = min(p10, predicted * 0.98)
     p90_safe = max(p90, predicted * 1.02)
 
+    # Areas backed by few listings carry a weak neighbourhood median. Say so rather
+    # than presenting a one-or-two-listing estimate with the same confidence as Lekki.
+    _n = st.session_state.get('area_listing_count')
+    thin_data_html = ""
+    if _n is not None and _n < 30:
+        thin_data_html = (
+            "<div style='font-size:0.72rem; color:#8a6d00; margin-top:4px;'>"
+            f"Based on only {_n} listings in this area. Treat this as indicative "
+            "and check the comparables tab.</div>")
+
     alias_note_html = ""
     if st.session_state.is_alias and st.session_state.last_multiplier != 1.0:
         parent_name = st.session_state.alias_parent.replace('-', ' ').title()
@@ -874,7 +908,7 @@ with col_result:
     _rent_html = f"""<div class='metric-card'>
 {alias_note_html}
 <div class='rent-display'>{format_naira(predicted)}</div>
-<div class='rent-range'>Range: {format_naira(p10_safe)} to {format_naira(p90_safe)} &nbsp; <span style='font-size:0.7rem; color:#444;'>(80% confidence)</span></div>
+<div class='rent-range'>Range: {format_naira(p10_safe)} to {format_naira(p90_safe)} &nbsp; <span style='font-size:0.7rem; color:#444;'>(80% prediction interval)</span></div>{thin_data_html}
 <div>
 <span class='tier-badge {TIER_CSS[price_tier]}'>{price_tier}</span>
 <span class='location-pill'>{st.session_state.location_tier_display}</span>
@@ -1438,14 +1472,14 @@ with footer_col2:
         <div style='color:#bbb; font-size:0.85rem; line-height:1.65; padding:4px;'>
             RentIQ Nigeria is a stacked machine learning ensemble trained on around 11,000 Lagos rental listings scraped from
             NigeriaPropertyCentre and PropertyPro over 2025-2026. The model combines XGBoost, LightGBM, and CatBoost predictions,
-            with a Ridge regression on top that learns how to weight each base model. Confidence intervals come from quantile regression.
+            with a Ridge regression on top that learns how to weight each base model. Prediction intervals come from quantile regression. They are prediction intervals rather than prediction intervals because they describe uncertainty about a single property, not about a population average.
             <br><br>
             The 33 core model areas are filtered for data quality — each has at least 10 listings in the training set.
             Alias areas (like Banana Island, Lekki Phase 1, Ikeja GRA) use the nearest core area as the model input,
             with a price adjustment multiplier derived from known market relationships.
             Electricity bands are based on NERC's official feeder classifications from six source documents.
             <br><br>
-            Overall test R² is 0.91 with an 80% confidence interval covering 79.5% of held-out predictions.
+            Overall test R² is 0.87 against 0.71 for a naive neighbourhood-median baseline, at 64% MAPE. The 80% prediction interval is conformalised and covers 79.5% of held-out predictions. Location aggregates are computed from training rows only when scoring, so the reported figure is not inflated by leakage. Accuracy varies a lot by area: around 29% MAPE in GRA, far worse in the Island, Outskirt and Suburb tiers.
             The model is least accurate for top-tier Island properties where key features (floor area,
             waterfront position, finishing grade) are not consistently published on listing sites.
         </div>

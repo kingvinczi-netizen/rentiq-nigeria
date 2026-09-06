@@ -1,0 +1,16 @@
+{
+ "conformal_q": 0.15359703298926516,
+ "target_coverage": 0.8,
+ "empirical_coverage_holdout": 79.54545454545455,
+ "raw_coverage_holdout": 64.22727272727272,
+ "test_r2": 0.8692957301221815,
+ "test_mape": 64.17454120105354,
+ "cv10_mean": 0.8815164166157802,
+ "cv10_std": 0.008728945853704437,
+ "baseline_neighbourhood_median_r2": 0.7112379027731022,
+ "n_rows": 10999,
+ "seed": 42,
+ "note": "Aggregates computed on all rows for deployment; reported metrics come from the training-only run.",
+ "conformal_q_deployment_fit": 0.0488,
+ "conformal_q_note": "Ships the evaluation-run Q. The deployment-fit value is smaller because its calibration rows contributed to the very medians used to predict them, which understates error on a genuinely new property. The wider evaluation Q is the honest choice for a public tool."
+}
