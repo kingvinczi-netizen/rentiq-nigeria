@@ -348,19 +348,53 @@ AREA_PLACEHOLDER = "— Select an area —"
 
 # Default daily electricity hours per area, from NERC band classifications
 # (dissertation Appendix B). Areas not listed fall back to a tier-based default.
+# Daily supply hours per area, taken from the modal value of electricity_hours
+# in the training data rather than restated by hand. The app used to fall back
+# to a tier default whenever an area had no entry here, which fed the model a
+# band it had never seen for that area: Surulere was trained at 16 hours in 268
+# of its 269 rows and the app was defaulting it to 20. The tier defaults below
+# now apply only to alias areas that carry no training rows of their own.
 NERC_AREA_HOURS = {
-    # Direct model areas
-    'ikoyi': 20, 'victoria-island': 20, 'lekki': 16, 'ajah': 16,
-    'magodo': 20, 'ikeja': 20, 'surulere': 20, 'yaba': 20,
-    'ilupeju': 20, 'gbagada': 20, 'iyana-ipaja': 16, 'ikorodu': 8,
-
-    # Alias areas that sit on a different feeder from their parent. Without
-    # these the alias silently inherits the parent's band, which was wrong for
-    # Aboru (Band A) reading off Iyana Ipaja (Band B), and for Egbeda, Ago
-    # Palace, Lekki Phase 1 and Festac in the same way.
-    'aboru': 20, 'egbeda': 20, 'ago-palace': 20,
-    'lekki-phase-1': 20, 'banana-island': 20, 'ikeja-gra': 20,
-    'festac': 12,
+    'agege': 8,
+    'aguda': 16,
+    'ajah': 16,
+    'alimosho': 8,
+    'amuwo odofin': 12,
+    'ayobo': 8,
+    'badore ajah': 12,
+    'gbagada': 16,
+    'gbagada phase 1': 16,
+    'ifako ijaiye': 8,
+    'ikate elegushi': 20,
+    'ikeja': 20,
+    'ikorodu': 4,
+    'ikoyi': 20,
+    'ilupeju': 20,
+    'ipaja': 8,
+    'isheri north': 20,
+    'isolo': 12,
+    'iyana ipaja': 8,
+    'ketu': 20,
+    'kosofe': 16,
+    'lawanson': 12,
+    'lekki': 16,
+    'magodo': 20,
+    'maryland': 20,
+    'mushin': 12,
+    'ocean bay estate': 16,
+    'ogba': 16,
+    'ogombo': 8,
+    'ogudu': 16,
+    'ojo': 8,
+    'ojota': 16,
+    'opic estate': 16,
+    'oral estate': 16,
+    'oshodi': 12,
+    'pinnock beach estate': 16,
+    'shomolu': 16,
+    'surulere': 16,
+    'victoria island': 20,
+    'yaba': 16,
 }
 
 # Fallback by tier when an area is not in the Appendix B table
@@ -1490,7 +1524,7 @@ with footer_col2:
             NigeriaPropertyCentre, PropertyPro and PrivateProperty in May 2026. The model combines XGBoost, LightGBM, and CatBoost predictions,
             with a Ridge regression on top that learns how to weight each base model. Prediction intervals come from quantile regression. They are prediction intervals rather than confidence intervals because they describe uncertainty about a single property, not about a population average.
             <br><br>
-            The 40 core model areas are filtered for data quality — each has at least 5 listings whose own location text names the area.
+            The 41 core model areas are filtered for data quality — each has at least 5 listings whose own location text names the area.
             Alias areas (like Banana Island, Lekki Phase 1, Ikeja GRA) use the nearest core area as the model input,
             with a price adjustment multiplier derived from known market relationships.
             Electricity bands are based on NERC's official feeder classifications from six source documents.
