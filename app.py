@@ -1,4 +1,5 @@
 import streamlit as st
+import re
 import pandas as pd
 import numpy as np
 import json
@@ -458,6 +459,22 @@ def load_model_card():
 CONFORMAL_Q = load_model_card().get('conformal_q', 0.0)
 
 
+def rows_naming_area(master, area_key):
+    """Listings whose own location text names `area_key`, whatever they are filed under.
+
+    The area label came from the scraper's search query rather than the listing
+    address, so seven areas were serving aggregates built from properties
+    somewhere else, and the listings genuinely in those places sit under a
+    different label: the real Lawanson listings are filed as Surulere, the real
+    Ogombo ones as Ajah. Matching on the listing's own address is what the
+    repaired aggregates were rebuilt from, so the comparables use it too and stay
+    consistent with the number shown above them."""
+    if master is None or 'area_text' not in master.columns:
+        return master.iloc[0:0] if master is not None else None
+    pat = r'\b' + re.escape(str(area_key)).replace(r'\ ', r'[\s\-]+') + r'\b'
+    return master[master['area_text'].str.contains(pat, regex=True, na=False)]
+
+
 def norm_area(series):
     """Area keys are spelled three different ways across the three files that
     feed this app: 'iyana-ipaja' in the master and in alias parents, 'iyana
@@ -498,6 +515,10 @@ def load_master():
         if os.path.exists(p):
             df = pd.read_csv(p)
             df['area_scraped'] = norm_area(df['area_scraped'])
+            df['area_text'] = (df.get('location_raw', pd.Series('', index=df.index)).fillna('')
+                               + ' ' +
+                               df.get('neighbourhood', pd.Series('', index=df.index)).fillna('')
+                               ).str.lower()
             return df
     return None
 
@@ -1351,13 +1372,13 @@ with tab_compare:
 with tab2:
     if master is not None:
         bed_col = 'bedrooms_encoded' if 'bedrooms_encoded' in master.columns else 'bedrooms_enc'
-        comps = master[
-            (master['area_scraped'] == st.session_state.area_key) &
-            (master[bed_col] == st.session_state.bedrooms_encoded)
-        ].copy()
+        in_area = rows_naming_area(master, st.session_state.area_key)
+        if in_area is None or len(in_area) == 0:
+            in_area = master[master['area_scraped'] == st.session_state.area_key]
+        comps = in_area[in_area[bed_col] == st.session_state.bedrooms_encoded].copy()
 
         if len(comps) == 0:
-            comps = master[master['area_scraped'] == st.session_state.area_key].copy()
+            comps = in_area.copy()
 
         comps = comps.sort_values('annual_rent_naira').head(8)
 
