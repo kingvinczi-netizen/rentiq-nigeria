@@ -1524,7 +1524,7 @@ with footer_col2:
             NigeriaPropertyCentre, PropertyPro and PrivateProperty in May 2026. The model combines XGBoost, LightGBM, and CatBoost predictions,
             with a Ridge regression on top that learns how to weight each base model. Prediction intervals come from quantile regression. They are prediction intervals rather than confidence intervals because they describe uncertainty about a single property, not about a population average.
             <br><br>
-            The 41 core model areas are filtered for data quality — each has at least 5 listings whose own location text names the area.
+            The 40 core model areas are filtered for data quality. Each carries at least 5 listings whose own location text names the area.
             Alias areas (like Banana Island, Lekki Phase 1, Ikeja GRA) use the nearest core area as the model input,
             with a price adjustment multiplier derived from known market relationships.
             Electricity bands are based on NERC's official feeder classifications from six source documents.
